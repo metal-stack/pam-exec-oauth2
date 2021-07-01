@@ -24,17 +24,16 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 
 	"github.com/shimt/go-simplecli"
-	"github.com/shimt/pam-exec-oauth2/internal/oauth2"
+	"golang.org/x/oauth2"
 )
 
 var cli = simplecli.NewCLI()
 
-func initCLI() {
+func init() {
 	cli.CommandLine.String("client-id", "", "OAuth2 Client ID")
 	cli.CommandLine.String("client-secret", "", "OAuth2 Client Secret")
 	cli.CommandLine.StringArray("scopes", []string{}, "OAuth2 Scopes")
@@ -43,7 +42,7 @@ func initCLI() {
 	cli.CommandLine.String("endpoint-token-url", "", "OAuth2 End Point Token URL")
 	cli.CommandLine.String("username-format", "%s", "username format")
 
-	cli.BindSameName(
+	err := cli.BindSameName(
 		"client-id",
 		"client-secret",
 		"scopes",
@@ -52,10 +51,7 @@ func initCLI() {
 		"endpoint-token-url",
 		"username-format",
 	)
-}
-
-func init() {
-	initCLI()
+	cli.Exit1IfError(err)
 }
 
 func main() {
@@ -95,23 +91,16 @@ func main() {
 		},
 	}
 
-	extraParameters := url.Values{}
-
-	for k, v := range cli.Config.GetStringMapString("extra-parameters") {
-		extraParameters[k] = []string{v}
-	}
-
 	cli.Log.Debug("create oauth2Context")
 
 	oauth2Context := context.Background()
 
 	cli.Log.Debug("call PasswordCredentialsToken")
 
-	oauth2Token, err := oauth2Config.PasswordCredentialsTokenEx(
+	oauth2Token, err := oauth2Config.PasswordCredentialsToken(
 		oauth2Context,
 		fmt.Sprintf(cli.Config.GetString("username-format"), username),
 		password,
-		extraParameters,
 	)
 
 	cli.Exit1IfError(err)
