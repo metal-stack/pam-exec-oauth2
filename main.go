@@ -23,47 +23,42 @@ package main
 import (
 	"bufio"
 	"context"
+	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 
-	"github.com/shimt/go-simplecli"
 	"golang.org/x/oauth2"
+	"gopkg.in/yaml.v2"
 )
 
-var cli = simplecli.NewCLI()
-
-func init() {
-	cli.CommandLine.String("client-id", "", "OAuth2 Client ID")
-	cli.CommandLine.String("client-secret", "", "OAuth2 Client Secret")
-	cli.CommandLine.StringArray("scopes", []string{}, "OAuth2 Scopes")
-	cli.CommandLine.String("redirect-url", "", "OAuth2 Redirect URL")
-	cli.CommandLine.String("endpoint-auth-url", "", "OAuth2 End Point Auth URL")
-	cli.CommandLine.String("endpoint-token-url", "", "OAuth2 End Point Token URL")
-	cli.CommandLine.String("username-format", "%s", "username format")
-
-	err := cli.BindSameName(
-		"client-id",
-		"client-secret",
-		"scopes",
-		"redirect-url",
-		"endpoint-auth-url",
-		"endpoint-token-url",
-		"username-format",
-	)
-	cli.Exit1IfError(err)
+type config struct {
+	ClientID         string   `yaml:"client-id"`
+	ClientSecret     string   `yaml:"client-secret"`
+	RedirectURL      string   `yaml:"redirect-url"`
+	Scopes           []string `yaml:"scopes"`
+	EndpointAuthURL  string   `yaml:"endpoint-auth-url"`
+	EndpointTokenURL string   `yaml:"endpoint-token-url"`
+	UsernameFormat   string   `yaml:"username-format"`
 }
 
 func main() {
-	setting := cli.NewCLISetting()
-	err := cli.Setup(
-		setting.ConfigSearchPath(),
-		setting.ConfigFile(filepath.Join(cli.Application.Directory, cli.Application.Name+".yaml")),
-	)
-	cli.Exit1IfError(err)
+	configFile := "pam-exec-oauth2.yaml"
+	configFlg := flag.String("config", configFile, "config file to use")
+	debugFlg := flag.Bool("debug", false, "enable debug")
 
-	if cli.ConfigFile != "" {
-		fmt.Println("Using config file:", cli.ConfigFile)
+	flag.Parse()
+
+	if configFlg != nil {
+		fmt.Println("using config file:", *configFlg)
+		configFile = *configFlg
+	}
+
+	config, err := readConfig(configFile)
+	if err != nil {
+		panic(err)
+	}
+	if debugFlg != nil && *debugFlg {
+		fmt.Printf("config:%#v\n", config)
 	}
 
 	username := os.Getenv("PAM_USER")
@@ -74,42 +69,48 @@ func main() {
 		password = stdinScanner.Text()
 	}
 
-	cli.Log.Debug("create oauth2Config")
-	cli.Log.Debugf("ClientID: %s", cli.Config.GetString("client-id"))
-	cli.Log.Debugf("ClientSecret: %s", cli.Config.GetString("client-secret"))
-	cli.Log.Debugf("Scopes: %s", cli.Config.GetStringSlice("scopes"))
-	cli.Log.Debugf("EndPoint.AuthURL: %s", cli.Config.GetString("endpoint-auth-url"))
-	cli.Log.Debugf("EndPoint.TokenURL: %s", cli.Config.GetString("endpoint-token-url"))
-
 	oauth2Config := oauth2.Config{
-		ClientID:     cli.Config.GetString("client-id"),
-		ClientSecret: cli.Config.GetString("client-secret"),
-		Scopes:       cli.Config.GetStringSlice("scopes"),
+		ClientID:     config.ClientID,
+		ClientSecret: config.ClientSecret,
+		Scopes:       config.Scopes,
 		Endpoint: oauth2.Endpoint{
-			AuthURL:  cli.Config.GetString("endpoint-auth-url"),
-			TokenURL: cli.Config.GetString("endpoint-token-url"),
+			AuthURL:  config.EndpointAuthURL,
+			TokenURL: config.EndpointTokenURL,
 		},
+		RedirectURL: config.RedirectURL,
 	}
-
-	cli.Log.Debug("create oauth2Context")
-
 	oauth2Context := context.Background()
-
-	cli.Log.Debug("call PasswordCredentialsToken")
 
 	oauth2Token, err := oauth2Config.PasswordCredentialsToken(
 		oauth2Context,
-		fmt.Sprintf(cli.Config.GetString("username-format"), username),
+		fmt.Sprintf(config.UsernameFormat, username),
 		password,
 	)
 
-	cli.Exit1IfError(err)
-
-	if !oauth2Token.Valid() {
-		cli.Exit(1)
-		cli.Log.Debug("OAuth2 authentication failed")
+	if err != nil {
+		panic(err)
 	}
 
-	cli.Log.Debug("OAuth2 authentication success")
-	cli.Exit(0)
+	if !oauth2Token.Valid() {
+		os.Exit(1)
+		fmt.Println("oauth2 authentication failed")
+	}
+
+	fmt.Println("oauth2 authentication success")
+	os.Exit(0)
+}
+
+func readConfig(filename string) (*config, error) {
+
+	yamlFile, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	var c config
+	err = yaml.Unmarshal(yamlFile, &c)
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal filecontent to config struct:%w", err)
+	}
+
+	return &c, nil
 }
