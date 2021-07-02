@@ -35,6 +35,8 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+const app = "pam-exec-oauth2"
+
 type config struct {
 	ClientID         string   `yaml:"client-id"`
 	ClientSecret     string   `yaml:"client-secret"`
@@ -52,18 +54,23 @@ func main() {
 	}
 	exPath := filepath.Dir(ex)
 
-	configFile := path.Join(exPath, "pam-exec-oauth2.yaml")
+	configFile := path.Join(exPath, app+".yaml")
 	configFlg := flag.String("config", configFile, "config file to use")
 	debug := false
 	debugFlg := flag.Bool("debug", false, "enable debug")
 	stdout := false
 	stdoutFlg := flag.Bool("stdout", false, "log to stdout instead of syslog")
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
+		flag.PrintDefaults()
+	}
 	flag.Parse()
+
 	if stdoutFlg != nil {
 		stdout = *stdoutFlg
 	}
 
-	sysLog, err := syslog.New(syslog.LOG_INFO, "pam-exec-oauth2")
+	sysLog, err := syslog.New(syslog.LOG_INFO, app)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -91,9 +98,9 @@ func main() {
 	username := os.Getenv("PAM_USER")
 	password := ""
 
-	stdinScanner := bufio.NewScanner(os.Stdin)
-	if stdinScanner.Scan() {
-		password = stdinScanner.Text()
+	s := bufio.NewScanner(os.Stdin)
+	if s.Scan() {
+		password = s.Text()
 	}
 
 	oauth2Config := oauth2.Config{
@@ -106,10 +113,8 @@ func main() {
 		},
 		RedirectURL: config.RedirectURL,
 	}
-	oauth2Context := context.Background()
-
 	oauth2Token, err := oauth2Config.PasswordCredentialsToken(
-		oauth2Context,
+		context.Background(),
 		fmt.Sprintf(config.UsernameFormat, username),
 		password,
 	)
@@ -121,12 +126,11 @@ func main() {
 		log.Fatal("oauth2 authentication failed")
 	}
 
-	log.Print("oauth2 authentication success")
+	log.Print("oauth2 authentication succeeded")
 	os.Exit(0)
 }
 
 func readConfig(filename string) (*config, error) {
-
 	yamlFile, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
@@ -136,6 +140,5 @@ func readConfig(filename string) (*config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to unmarshal filecontent to config struct:%w", err)
 	}
-
 	return &c, nil
 }
