@@ -25,6 +25,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
+	"log/syslog"
 	"os"
 
 	"golang.org/x/oauth2"
@@ -42,23 +44,34 @@ type config struct {
 }
 
 func main() {
+	sysLog, err := syslog.New(syslog.LOG_INFO, "pam-exec-oauth2")
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.SetOutput(sysLog)
+
 	configFile := "pam-exec-oauth2.yaml"
 	configFlg := flag.String("config", configFile, "config file to use")
+	debug := false
 	debugFlg := flag.Bool("debug", false, "enable debug")
 
 	flag.Parse()
 
+	if debugFlg != nil {
+		debug = *debugFlg
+	}
+
 	if configFlg != nil {
-		fmt.Println("using config file:", *configFlg)
+		log.Printf("using config file:%s", *configFlg)
 		configFile = *configFlg
 	}
 
 	config, err := readConfig(configFile)
 	if err != nil {
-		panic(err)
+		log.Fatalf(err.Error())
 	}
-	if debugFlg != nil && *debugFlg {
-		fmt.Printf("config:%#v\n", config)
+	if debug {
+		log.Printf("config:%#v\n", config)
 	}
 
 	username := os.Getenv("PAM_USER")
@@ -86,17 +99,16 @@ func main() {
 		fmt.Sprintf(config.UsernameFormat, username),
 		password,
 	)
-
 	if err != nil {
-		panic(err)
+		log.Fatal(err.Error())
 	}
 
 	if !oauth2Token.Valid() {
+		log.Print("oauth2 authentication failed")
 		os.Exit(1)
-		fmt.Println("oauth2 authentication failed")
 	}
 
-	fmt.Println("oauth2 authentication success")
+	log.Print("oauth2 authentication success")
 	os.Exit(0)
 }
 
