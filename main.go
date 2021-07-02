@@ -28,6 +28,8 @@ import (
 	"log"
 	"log/syslog"
 	"os"
+	"path"
+	"path/filepath"
 
 	"golang.org/x/oauth2"
 	"gopkg.in/yaml.v2"
@@ -44,18 +46,30 @@ type config struct {
 }
 
 func main() {
+	ex, err := os.Executable()
+	if err != nil {
+		log.Fatal(err)
+	}
+	exPath := filepath.Dir(ex)
+
+	configFile := path.Join(exPath, "pam-exec-oauth2.yaml")
+	configFlg := flag.String("config", configFile, "config file to use")
+	debug := false
+	debugFlg := flag.Bool("debug", false, "enable debug")
+	stdout := false
+	stdoutFlg := flag.Bool("stdout", false, "log to stdout instead of syslog")
+	flag.Parse()
+	if stdoutFlg != nil {
+		stdout = *stdoutFlg
+	}
+
 	sysLog, err := syslog.New(syslog.LOG_INFO, "pam-exec-oauth2")
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.SetOutput(sysLog)
-
-	configFile := "pam-exec-oauth2.yaml"
-	configFlg := flag.String("config", configFile, "config file to use")
-	debug := false
-	debugFlg := flag.Bool("debug", false, "enable debug")
-
-	flag.Parse()
+	if !stdout {
+		log.SetOutput(sysLog)
+	}
 
 	if debugFlg != nil {
 		debug = *debugFlg
@@ -104,8 +118,7 @@ func main() {
 	}
 
 	if !oauth2Token.Valid() {
-		log.Print("oauth2 authentication failed")
-		os.Exit(1)
+		log.Fatal("oauth2 authentication failed")
 	}
 
 	log.Print("oauth2 authentication success")
