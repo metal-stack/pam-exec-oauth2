@@ -39,7 +39,5 @@ scopes:
     - "email"
 endpoint-auth-url: "https://login.windows.net/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/oauth2/authorize"
 endpoint-token-url: "https://login.windows.net/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/oauth2/token"
-extra-parameters:
-    resource: "https://graph.windows.net/"
 username-format: "%s@example.org"
 ```
