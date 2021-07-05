@@ -163,7 +163,7 @@ func validateClaims(t string, sufficientRoles []string) error {
 
 	claims := myClaim{}
 	if err := token.UnsafeClaimsWithoutVerification(&claims); err != nil {
-		panic(err)
+		return fmt.Errorf("unable to extract claims from token:%w", err)
 	}
 	for _, role := range claims.Roles {
 		for _, sr := range sufficientRoles {
