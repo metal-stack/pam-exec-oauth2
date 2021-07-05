@@ -32,6 +32,7 @@ import (
 	"path/filepath"
 
 	"golang.org/x/oauth2"
+	"gopkg.in/square/go-jose.v2/jwt"
 	"gopkg.in/yaml.v2"
 )
 
@@ -45,6 +46,7 @@ type config struct {
 	EndpointAuthURL  string   `yaml:"endpoint-auth-url"`
 	EndpointTokenURL string   `yaml:"endpoint-token-url"`
 	UsernameFormat   string   `yaml:"username-format"`
+	RequiredRole     string   `yaml:"required-role"`
 }
 
 func main() {
@@ -126,6 +128,11 @@ func main() {
 		log.Fatal("oauth2 authentication failed")
 	}
 
+	err = validateClaims(oauth2Token.AccessToken, config.RequiredRole)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
 	log.Print("oauth2 authentication succeeded")
 	os.Exit(0)
 }
@@ -141,4 +148,28 @@ func readConfig(filename string) (*config, error) {
 		return nil, fmt.Errorf("unable to unmarshal filecontent to config struct:%w", err)
 	}
 	return &c, nil
+}
+
+type myClaim struct {
+	jwt.Claims
+	Roles []string `json:"roles,omitempty"`
+}
+
+func validateClaims(t, requiredRole string) error {
+	fmt.Println(t)
+	token, err := jwt.ParseSigned(t)
+	if err != nil {
+		return fmt.Errorf("error parsing token: %s", err)
+	}
+
+	claims := myClaim{}
+	if err := token.UnsafeClaimsWithoutVerification(&claims); err != nil {
+		panic(err)
+	}
+	for _, role := range claims.Roles {
+		if role == requiredRole {
+			return nil
+		}
+	}
+	return fmt.Errorf("required role:%s not found", requiredRole)
 }
