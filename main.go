@@ -46,7 +46,7 @@ type config struct {
 	EndpointAuthURL  string   `yaml:"endpoint-auth-url"`
 	EndpointTokenURL string   `yaml:"endpoint-token-url"`
 	UsernameFormat   string   `yaml:"username-format"`
-	RequiredRole     string   `yaml:"required-role"`
+	SufficientRoles  []string `yaml:"sufficient-roles"`
 }
 
 func main() {
@@ -128,7 +128,7 @@ func main() {
 		log.Fatal("oauth2 authentication failed")
 	}
 
-	err = validateClaims(oauth2Token.AccessToken, config.RequiredRole)
+	err = validateClaims(oauth2Token.AccessToken, config.SufficientRoles)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
@@ -155,7 +155,7 @@ type myClaim struct {
 	Roles []string `json:"roles,omitempty"`
 }
 
-func validateClaims(t, requiredRole string) error {
+func validateClaims(t string, sufficientRoles []string) error {
 	fmt.Println(t)
 	token, err := jwt.ParseSigned(t)
 	if err != nil {
@@ -167,9 +167,11 @@ func validateClaims(t, requiredRole string) error {
 		panic(err)
 	}
 	for _, role := range claims.Roles {
-		if role == requiredRole {
-			return nil
+		for _, sr := range sufficientRoles {
+			if role == sr {
+				return nil
+			}
 		}
 	}
-	return fmt.Errorf("required role:%s not found", requiredRole)
+	return fmt.Errorf("role:%s not found", sufficientRoles)
 }
