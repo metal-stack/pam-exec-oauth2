@@ -156,7 +156,6 @@ type myClaim struct {
 }
 
 func validateClaims(t string, sufficientRoles []string) error {
-	fmt.Println(t)
 	token, err := jwt.ParseSigned(t)
 	if err != nil {
 		return fmt.Errorf("error parsing token: %w", err)
