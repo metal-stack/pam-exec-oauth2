@@ -186,7 +186,7 @@ func checkuser(username string) {
 	// if no user then add one
 	if _, ok := err.(user.NoFoundError); ok {
 
-		uid, _ := user.NextGID()
+		uid, _ := user.NextUID()
 		_, err := user.AddUser(username, uid)
 
 		if err != nil {
