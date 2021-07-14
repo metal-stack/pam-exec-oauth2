@@ -116,6 +116,12 @@ github.com/rogpeppe/go-internal v1.3.0/go.mod h1:M8bDsm7K2OlrFYOpmOWEs/qY81heoFR
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.4.0 h1:2E4SXV/wtOkTonXsotYi4li6zVWxYlZuYNCXe9XRJyk=
 github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81PSLYec5m4=
+github.com/tredoe/fileutil v1.0.0 h1:jue1YpVb8cW/HZJZPIC7aOgxhjxazAJdmoixGuBvRvk=
+github.com/tredoe/fileutil v1.0.0/go.mod h1:PBayWPFCURwkmW0u6E8E8C6Jtd9ZzWq/U1iMa6BLRPg=
+github.com/tredoe/goutil v0.0.0-20200111155331-68cefb6d3cdc h1:/s7eaZTsft35wEeGOjV4U3DHZ6jwr0MxehKZoMJAFZU=
+github.com/tredoe/goutil v0.0.0-20200111155331-68cefb6d3cdc/go.mod h1:dp4VPOLeEFYbsf1ikgd+uytWDnpCdMiTHMg6mh7hHuQ=
+github.com/tredoe/osutil v1.0.5 h1:mfXjHBJU46GoJDOUcHyV895fauUuVikR9U8yRbGBrqw=
+github.com/tredoe/osutil v1.0.5/go.mod h1:DDO4G4Mwys6NJi5JmEVLnfFbQWIfVVri8L6HuXb/v98=
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.1.32/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=

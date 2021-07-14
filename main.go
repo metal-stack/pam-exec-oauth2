@@ -31,6 +31,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/tredoe/osutil/user"
 	"golang.org/x/oauth2"
 	"gopkg.in/square/go-jose.v2/jwt"
 	"gopkg.in/yaml.v2"
@@ -115,11 +116,13 @@ func main() {
 		},
 		RedirectURL: config.RedirectURL,
 	}
+
 	oauth2Token, err := oauth2Config.PasswordCredentialsToken(
 		context.Background(),
 		fmt.Sprintf(config.UsernameFormat, username),
 		password,
 	)
+
 	if err != nil {
 		log.Fatal(err.Error())
 	}
@@ -132,6 +135,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
+
+	checkuser(username)
 
 	log.Print("oauth2 authentication succeeded")
 	os.Exit(0)
@@ -173,4 +178,19 @@ func validateClaims(t string, sufficientRoles []string) error {
 		}
 	}
 	return fmt.Errorf("role:%s not found", sufficientRoles)
+}
+
+func checkuser(username string) {
+	_, err := user.LookupUser(username)
+
+	// if no user then add one
+	if _, ok := err.(user.NoFoundError); ok {
+
+		uid, _ := user.NextGID()
+		_, err := user.AddUser(username, uid)
+
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+	}
 }
