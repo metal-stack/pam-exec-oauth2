@@ -28,6 +28,7 @@ import (
 	"log"
 	"log/syslog"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 
@@ -46,6 +47,7 @@ type config struct {
 	EndpointAuthURL  string   `yaml:"endpoint-auth-url"`
 	EndpointTokenURL string   `yaml:"endpoint-token-url"`
 	UsernameFormat   string   `yaml:"username-format"`
+	Group            string   `yaml:"group"`
 	SufficientRoles  []string `yaml:"sufficient-roles"`
 }
 
@@ -133,6 +135,8 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
+	createUser(username, config.Group)
+
 	log.Print("oauth2 authentication succeeded")
 	os.Exit(0)
 }
@@ -173,4 +177,13 @@ func validateClaims(t string, sufficientRoles []string) error {
 		}
 	}
 	return fmt.Errorf("role:%s not found", sufficientRoles)
+}
+
+func createUser(username, group string) {
+	cmd := exec.Command("useradd", "-g", group, username)
+	stdoutStderr, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("user already exists:%s", err.Error())
+	}
+	log.Printf("%s", stdoutStderr)
 }
