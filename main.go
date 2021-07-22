@@ -28,8 +28,10 @@ import (
 	"log"
 	"log/syslog"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
+	"strconv"
 
 	"github.com/tredoe/osutil/user"
 	"golang.org/x/oauth2"
@@ -37,8 +39,11 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// app name
 const app = "pam-exec-oauth2"
 
+// config define openid Connect parameters
+// and setting for this modul
 type config struct {
 	ClientID         string   `yaml:"client-id"`
 	ClientSecret     string   `yaml:"client-secret"`
@@ -50,13 +55,18 @@ type config struct {
 	SufficientRoles  []string `yaml:"sufficient-roles"`
 }
 
+// main primary entry
 func main() {
+
+	// get executable and path name
+	// to determine the default config file
 	ex, err := os.Executable()
 	if err != nil {
 		log.Fatal(err)
 	}
 	exPath := filepath.Dir(ex)
 
+	// initiate application parameters
 	configFile := path.Join(exPath, app+".yaml")
 	configFlg := flag.String("config", configFile, "config file to use")
 	debug := false
@@ -73,6 +83,7 @@ func main() {
 		stdout = *stdoutFlg
 	}
 
+	// initiate logging
 	sysLog, err := syslog.New(syslog.LOG_INFO, app)
 	if err != nil {
 		log.Fatal(err)
@@ -98,14 +109,21 @@ func main() {
 		log.Printf("config:%#v\n", config)
 	}
 
+	// pam modul use variable PAM_USER to get userid
 	username := os.Getenv("PAM_USER")
+	// add user here only if user is in passwd the login worked
+	createUser(username)
 	password := ""
 
+	// wait for stdin to get password from user
 	s := bufio.NewScanner(os.Stdin)
 	if s.Scan() {
 		password = s.Text()
 	}
 
+	// authentication agains oidc provider
+	// load configuration from yaml config
+	log.Print("Load Config OpenID Modul ")
 	oauth2Config := oauth2.Config{
 		ClientID:     config.ClientID,
 		ClientSecret: config.ClientSecret,
@@ -117,6 +135,9 @@ func main() {
 		RedirectURL: config.RedirectURL,
 	}
 
+	// send authentication request to oidc provider
+	log.Print("Call OIDC Provider and get Token")
+
 	oauth2Token, err := oauth2Config.PasswordCredentialsToken(
 		context.Background(),
 		fmt.Sprintf(config.UsernameFormat, username),
@@ -127,21 +148,23 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
+	// check here is token vaild
 	if !oauth2Token.Valid() {
 		log.Fatal("oauth2 authentication failed")
 	}
 
-	err = validateClaims(oauth2Token.AccessToken, config.SufficientRoles)
+	// check group for authentication is in token
+	err = validateClaims(oauth2Token.AccessToken, config.SufficientRoles, username)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-
-	checkuser(username)
 
 	log.Print("oauth2 authentication succeeded")
 	os.Exit(0)
 }
 
+// readConfig
+// need file path from yaml and return config
 func readConfig(filename string) (*config, error) {
 	yamlFile, err := os.ReadFile(filename)
 	if err != nil {
@@ -155,12 +178,14 @@ func readConfig(filename string) (*config, error) {
 	return &c, nil
 }
 
+// myClain define token struct
 type myClaim struct {
 	jwt.Claims
 	Roles []string `json:"roles,omitempty"`
 }
 
-func validateClaims(t string, sufficientRoles []string) error {
+// validateClaims check role fom config sufficetRoles is in token roles claim
+func validateClaims(t string, sufficientRoles []string, username string) error {
 	token, err := jwt.ParseSigned(t)
 	if err != nil {
 		return fmt.Errorf("error parsing token: %w", err)
@@ -171,8 +196,10 @@ func validateClaims(t string, sufficientRoles []string) error {
 		return fmt.Errorf("unable to extract claims from token:%w", err)
 	}
 	for _, role := range claims.Roles {
+		createGroup(role, username)
 		for _, sr := range sufficientRoles {
 			if role == sr {
+				log.Print("validateClaims access granted role " + role + " is in token")
 				return nil
 			}
 		}
@@ -180,17 +207,40 @@ func validateClaims(t string, sufficientRoles []string) error {
 	return fmt.Errorf("role:%s not found", sufficientRoles)
 }
 
-func checkuser(username string) {
+// createUser this create user is not exsits
+func createUser(username string) {
 	_, err := user.LookupUser(username)
 
 	// if no user then add one
 	if _, ok := err.(user.NoFoundError); ok {
 
-		uid, _ := user.NextUID()
-		_, err := user.AddUser(username, uid)
+		cmd := exec.Command("usr/sbin/useradd", "-m", username)
+		stdoutStderr, err := cmd.CombinedOutput()
+		if err != nil {
+			log.Printf("user already exists:%s ", err.Error())
+		}
+		log.Printf("%s", stdoutStderr)
+	} else {
+		log.Printf("user already exists: %s skip create", username)
+	}
+}
+
+// createUser this create user is not exsits
+func createGroup(role string, username string) {
+	_, err := user.LookupGroup(role)
+
+	// if no group then add one
+	if _, ok := err.(user.NoFoundError); ok {
+
+		gid, err := user.AddGroup(role, username)
 
 		if err != nil {
-			log.Fatal(err.Error())
+			log.Printf("cannot create group :%s ", err.Error())
 		}
+
+		log.Print("group: " + role + " created gid: " + strconv.Itoa(gid))
+
+	} else {
+		log.Printf("group already exists: %s skip set member", username)
 	}
 }
