@@ -41,3 +41,17 @@ endpoint-auth-url: "https://login.windows.net/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxx
 endpoint-token-url: "https://login.windows.net/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/oauth2/token"
 username-format: "%s@example.org"
 ```
+
+#### Keycloak
+
+```yaml
+---
+client-id: "xxxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+client-secret: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+redirect-url: "urn:ietf:wg:oauth:2.0:oob"
+scopes: 
+    - "email"
+endpoint-auth-url: "https://%host%/auth/realms/%yourrealm%/protocol/openid-connect/auth"
+endpoint-token-url: "https://%host%/auth/realms/%yourrealm%/protocol/openid-connect/token"
+username-format: "%s"
+```
