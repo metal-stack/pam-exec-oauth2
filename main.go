@@ -23,6 +23,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -197,7 +198,7 @@ func validateClaims(t string, sufficientRoles []string, username string, addGrou
 
 	claims := myClaim{}
 	if err := token.UnsafeClaimsWithoutVerification(&claims); err != nil {
-		return fmt.Errorf("unable to extract claims from token:%w", err)
+		return fmt.Errorf("unable to extract claims from token: %w", err)
 	}
 	for _, role := range claims.Roles {
 
@@ -212,20 +213,21 @@ func validateClaims(t string, sufficientRoles []string, username string, addGrou
 			}
 		}
 	}
-	return fmt.Errorf("role:%s not found", sufficientRoles)
+	return fmt.Errorf("role: %s not found", sufficientRoles)
 }
 
 // createUser this create user is not exsits
 func createUser(username string) {
 	_, err := user.LookupUser(username)
 
+	var pathError *user.NoFoundError
 	// if no user then add one
-	if _, ok := err.(user.NoFoundError); ok {
+	if ok := errors.As(err, &pathError); ok {
 
 		cmd := exec.Command("usr/sbin/useradd", "-m", "-s", "/bin/bash", username)
 		stdoutStderr, err := cmd.CombinedOutput()
 		if err != nil {
-			log.Printf("user already exists:%s ", err.Error())
+			log.Printf("user already exists: %s ", err.Error())
 		}
 
 		log.Printf("%s", stdoutStderr)
@@ -237,9 +239,9 @@ func createUser(username string) {
 // createUser this create user is not exsits
 func createGroup(role string, username string) {
 	_, err := user.LookupGroup(role)
-
+	var pathError *user.NoFoundError
 	// if no group then add one
-	if _, ok := err.(user.NoFoundError); ok {
+	if ok := errors.As(err, &pathError); ok {
 
 		gid, err := user.AddGroup(role, username)
 
