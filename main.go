@@ -53,6 +53,8 @@ type config struct {
 	EndpointTokenURL string   `yaml:"endpoint-token-url"`
 	UsernameFormat   string   `yaml:"username-format"`
 	SufficientRoles  []string `yaml:"sufficient-roles"`
+	CreateUser       bool     `yaml:"createuser"`
+	CreateGroup      bool     `yaml:"creategroup"`
 }
 
 // main primary entry
@@ -112,7 +114,9 @@ func main() {
 	// pam modul use variable PAM_USER to get userid
 	username := os.Getenv("PAM_USER")
 	// add user here only if user is in passwd the login worked
-	createUser(username)
+	if config.CreateUser {
+		createUser(username)
+	}
 	password := ""
 
 	// wait for stdin to get password from user
@@ -154,7 +158,7 @@ func main() {
 	}
 
 	// check group for authentication is in token
-	err = validateClaims(oauth2Token.AccessToken, config.SufficientRoles, username)
+	err = validateClaims(oauth2Token.AccessToken, config.SufficientRoles, username, config.CreateGroup)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
@@ -185,7 +189,7 @@ type myClaim struct {
 }
 
 // validateClaims check role fom config sufficetRoles is in token roles claim
-func validateClaims(t string, sufficientRoles []string, username string) error {
+func validateClaims(t string, sufficientRoles []string, username string, addGroup bool) error {
 	token, err := jwt.ParseSigned(t)
 	if err != nil {
 		return fmt.Errorf("error parsing token: %w", err)
@@ -196,7 +200,11 @@ func validateClaims(t string, sufficientRoles []string, username string) error {
 		return fmt.Errorf("unable to extract claims from token:%w", err)
 	}
 	for _, role := range claims.Roles {
-		createGroup(role, username)
+
+		if addGroup {
+			createGroup(role, username)
+		}
+
 		for _, sr := range sufficientRoles {
 			if role == sr {
 				log.Print("validateClaims access granted role " + role + " is in token")
@@ -214,11 +222,12 @@ func createUser(username string) {
 	// if no user then add one
 	if _, ok := err.(user.NoFoundError); ok {
 
-		cmd := exec.Command("usr/sbin/useradd", "-m", username)
+		cmd := exec.Command("usr/sbin/useradd", "-m", "-s", "/bin/bash", username)
 		stdoutStderr, err := cmd.CombinedOutput()
 		if err != nil {
 			log.Printf("user already exists:%s ", err.Error())
 		}
+
 		log.Printf("%s", stdoutStderr)
 	} else {
 		log.Printf("user already exists: %s skip create", username)
