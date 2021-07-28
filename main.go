@@ -26,6 +26,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"log/syslog"
 	"os"
@@ -33,6 +34,8 @@ import (
 	"path"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/tredoe/osutil/user"
 	"golang.org/x/oauth2"
@@ -46,16 +49,19 @@ const app = "pam-exec-oauth2"
 // config define openid Connect parameters
 // and setting for this modul
 type config struct {
-	ClientID         string   `yaml:"client-id"`
-	ClientSecret     string   `yaml:"client-secret"`
-	RedirectURL      string   `yaml:"redirect-url"`
-	Scopes           []string `yaml:"scopes"`
-	EndpointAuthURL  string   `yaml:"endpoint-auth-url"`
-	EndpointTokenURL string   `yaml:"endpoint-token-url"`
-	UsernameFormat   string   `yaml:"username-format"`
-	SufficientRoles  []string `yaml:"sufficient-roles"`
-	CreateUser       bool     `yaml:"createuser"`
-	CreateGroup      bool     `yaml:"creategroup"`
+	ClientID          string   `yaml:"client-id"`
+	ClientSecret      string   `yaml:"client-secret"`
+	RedirectURL       string   `yaml:"redirect-url"`
+	Scopes            []string `yaml:"scopes"`
+	EndpointAuthURL   string   `yaml:"endpoint-auth-url"`
+	EndpointTokenURL  string   `yaml:"endpoint-token-url"`
+	UsernameFormat    string   `yaml:"username-format"`
+	SufficientRoles   []string `yaml:"sufficient-roles"`
+	CreateUser        bool     `yaml:"createuser"`
+	CreateGroup       bool     `yaml:"creategroup"`
+	CreateGroupMember bool     `yaml:"creategroupmember"`
+	DeleteOidcUsers   bool     `yaml:"delete-oidc-users"`
+	DeleteUserDays    int      `yaml:"delete-users-days"`
 }
 
 // main primary entry
@@ -114,10 +120,12 @@ func main() {
 
 	// pam modul use variable PAM_USER to get userid
 	username := os.Getenv("PAM_USER")
+
 	// add user here only if user is in passwd the login worked
 	if config.CreateUser {
 		createUser(username)
 	}
+
 	password := ""
 
 	// wait for stdin to get password from user
@@ -159,9 +167,13 @@ func main() {
 	}
 
 	// check group for authentication is in token
-	err = validateClaims(oauth2Token.AccessToken, config.SufficientRoles, username, config.CreateGroup)
+	err = validateClaims(oauth2Token.AccessToken, config.SufficientRoles, username, config.CreateGroup, config.CreateGroupMember)
 	if err != nil {
 		log.Fatal(err.Error())
+	}
+
+	if config.DeleteOidcUsers {
+		deleteOldUser()
 	}
 
 	log.Print("oauth2 authentication succeeded")
@@ -190,7 +202,7 @@ type myClaim struct {
 }
 
 // validateClaims check role fom config sufficetRoles is in token roles claim
-func validateClaims(t string, sufficientRoles []string, username string, addGroup bool) error {
+func validateClaims(t string, sufficientRoles []string, username string, addGroup bool, addmembership bool) error {
 	token, err := jwt.ParseSigned(t)
 	if err != nil {
 		return fmt.Errorf("error parsing token: %w", err)
@@ -204,6 +216,10 @@ func validateClaims(t string, sufficientRoles []string, username string, addGrou
 
 		if addGroup {
 			createGroup(role, username)
+		}
+
+		if addmembership {
+			addUserToGroup(role, username)
 		}
 
 		for _, sr := range sufficientRoles {
@@ -224,7 +240,7 @@ func createUser(username string) {
 	// if no user then add one
 	if ok := errors.As(err, &pathError); ok {
 
-		cmd := exec.Command("usr/sbin/useradd", "-m", "-s", "/bin/bash", username)
+		cmd := exec.Command("usr/sbin/useradd", "-m", "-s", "/bin/bash", "-c", "app", username)
 		stdoutStderr, err := cmd.CombinedOutput()
 		if err != nil {
 			log.Printf("user already exists: %s ", err.Error())
@@ -234,6 +250,33 @@ func createUser(username string) {
 	} else {
 		log.Printf("user already exists: %s skip create", username)
 	}
+}
+
+// getLastLogin for a user
+func getLastLogin(username string) time.Time {
+
+	cmd := exec.Command("last", "-1", username)
+	stdoutStderr, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("No lastlogin: %s ", err.Error())
+	}
+
+	s := string(stdoutStderr)
+	split := strings.Split(s, " ")
+	x := strings.TrimSpace(split[2] + " " + split[3] + " " + split[4] + " " + split[5] + " " + split[6] + " " + split[7])
+	return parseloginTime(x)
+}
+
+// parseloginTime get time from pased last command
+func parseloginTime(currenttime string) time.Time {
+
+	layout := time.ANSIC
+	t, err := time.Parse(layout, currenttime)
+
+	if err != nil {
+		fmt.Println(err)
+	}
+	return t
 }
 
 // createUser this create user is not exsits
@@ -253,5 +296,83 @@ func createGroup(role string, username string) {
 
 	} else {
 		log.Printf("group already exists: %s skip set member", username)
+	}
+}
+
+// addUserToGroup add user to group by roles
+func addUserToGroup(role string, username string) {
+	_, err := user.LookupGroup(role)
+	var pathError *user.NoFoundError
+	// if no group then add one
+	if ok := errors.As(err, &pathError); ok {
+
+		err := user.AddUsersToGroup(role, username)
+
+		if err != nil {
+			log.Printf("cannot create membership :%s ", err.Error())
+		}
+		log.Printf("user added to :%s ", role)
+	}
+}
+
+// getAllUsers list all users from passwd
+func getAllUsers() []string {
+
+	var Users []string
+	file, err := os.Open("/etc/passwd")
+
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+
+	for {
+		line, err := reader.ReadString('\n')
+
+		// skip all line starting with #
+		if equal := strings.Index(line, "#"); equal < 0 {
+			// get the username and description
+			lineSlice := strings.FieldsFunc(line, func(divide rune) bool {
+				return divide == ':' // we divide at colon
+			})
+
+			if len(lineSlice) > 0 {
+				Users = append(Users, lineSlice[0])
+			}
+
+		}
+
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			fmt.Println(err)
+		}
+
+	}
+	return Users
+}
+
+// deleteOldUsers from added by pam modul
+func deleteOldUser() {
+
+	for _, u := range getAllUsers() {
+
+		currentuser, err := user.LookupUser(u)
+		if err != nil {
+			log.Printf("user not found :%s ", err.Error())
+		}
+
+		// check user is added from modul and login since  days
+		if currentuser.Gecos == app && getLastLogin(u).After(time.Now().AddDate(0, 0, -60)) {
+			log.Printf("user added from modul and no login since 60 days")
+			err := user.DelUser(u)
+			if err != nil {
+				log.Printf("user not deleted :%s ", err.Error())
+			}
+		}
 	}
 }
