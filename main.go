@@ -173,7 +173,7 @@ func main() {
 	}
 
 	if config.DeleteOidcUsers {
-		deleteOldUser()
+		deleteOldUser(*config)
 	}
 
 	log.Print("oauth2 authentication succeeded")
@@ -240,7 +240,7 @@ func createUser(username string) {
 	// if no user then add one
 	if ok := errors.As(err, &pathError); ok {
 
-		cmd := exec.Command("usr/sbin/useradd", "-m", "-s", "/bin/bash", "-c", "app", username)
+		cmd := exec.Command("usr/sbin/useradd", "-m", "-s", "/bin/bash", "-c", app, username)
 		stdoutStderr, err := cmd.CombinedOutput()
 		if err != nil {
 			log.Printf("user already exists: %s ", err.Error())
@@ -357,7 +357,7 @@ func getAllUsers() []string {
 }
 
 // deleteOldUsers from added by pam modul
-func deleteOldUser() {
+func deleteOldUser(c config) {
 
 	for _, u := range getAllUsers() {
 
@@ -367,8 +367,8 @@ func deleteOldUser() {
 		}
 
 		// check user is added from modul and login since  days
-		if currentuser.Gecos == app && getLastLogin(u).After(time.Now().AddDate(0, 0, -60)) {
-			log.Printf("user added from modul and no login since 60 days")
+		if currentuser.Gecos == app && getLastLogin(u).Before(time.Now().AddDate(0, 0, -c.DeleteUserDays)) {
+			log.Printf("user added from modul and no login since config days")
 			err := user.DelUser(u)
 			if err != nil {
 				log.Printf("user not deleted :%s ", err.Error())
