@@ -23,7 +23,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -31,13 +30,15 @@ import (
 	"log/syslog"
 	"os"
 	"os/exec"
+	"os/user"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/tredoe/osutil/user"
+	unixuser "github.com/tredoe/osutil/user"
+
 	"golang.org/x/oauth2"
 	"gopkg.in/square/go-jose.v2/jwt"
 	"gopkg.in/yaml.v2"
@@ -234,21 +235,24 @@ func validateClaims(t string, sufficientRoles []string, username string, addGrou
 
 // createUser this create user is not exsits
 func createUser(username string) {
-	_, err := user.LookupUser(username)
+	currentuser, err := unixuser.LookupUser(username)
 
-	var pathError *user.NoFoundError
-	// if no user then add one
-	if ok := errors.As(err, &pathError); ok {
+	if err != nil {
+		// if no user then add one
+		if currentuser == nil {
 
-		cmd := exec.Command("usr/sbin/useradd", "-m", "-s", "/bin/bash", "-c", app, username)
-		stdoutStderr, err := cmd.CombinedOutput()
-		if err != nil {
-			log.Printf("user already exists: %s ", err.Error())
+			cmd := exec.Command("usr/sbin/useradd", "-m", "-s", "/bin/bash", "-c", app, username)
+			stdoutStderr, err := cmd.CombinedOutput()
+			if err != nil {
+				log.Printf("user already exists: %s ", err.Error())
+			}
+
+			log.Printf("%s", stdoutStderr)
+		} else {
+			log.Printf("user already exists: %s skip create", username)
 		}
-
-		log.Printf("%s", stdoutStderr)
 	} else {
-		log.Printf("user already exists: %s skip create", username)
+		log.Printf("%s", err)
 	}
 }
 
@@ -273,7 +277,7 @@ func parseloginTime(currenttime string) time.Time {
 	layout := time.ANSIC
 	t, err := time.Parse(layout, currenttime)
 
-	if err != nil {
+	if err != nil && !t.IsZero() {
 		fmt.Println(err)
 	}
 	return t
@@ -281,37 +285,44 @@ func parseloginTime(currenttime string) time.Time {
 
 // createUser this create user is not exsits
 func createGroup(role string, username string) {
-	_, err := user.LookupGroup(role)
-	var pathError *user.NoFoundError
-	// if no group then add one
-	if ok := errors.As(err, &pathError); ok {
+	currentgroup, err := user.LookupGroup(role)
 
-		gid, err := user.AddGroup(role, username)
+	if err != nil {
+		// if no group then add one
+		if currentgroup == nil {
 
-		if err != nil {
-			log.Printf("cannot create group :%s ", err.Error())
+			gid, err := unixuser.AddGroup(role, username)
+
+			if err != nil {
+				log.Printf("cannot create group :%s ", err.Error())
+			}
+
+			log.Print("group: " + role + " created gid: " + strconv.Itoa(gid))
+
+		} else {
+			log.Printf("group already exists: %s skip set member", username)
 		}
-
-		log.Print("group: " + role + " created gid: " + strconv.Itoa(gid))
-
 	} else {
-		log.Printf("group already exists: %s skip set member", username)
+		log.Printf("%s", err)
 	}
+
 }
 
 // addUserToGroup add user to group by roles
 func addUserToGroup(role string, username string) {
-	_, err := user.LookupGroup(role)
-	var pathError *user.NoFoundError
-	// if no group then add one
-	if ok := errors.As(err, &pathError); ok {
+	currentgroup, err := user.LookupGroup(role)
 
-		err := user.AddUsersToGroup(role, username)
+	// if no group then add one
+	if currentgroup == nil {
+
+		err := unixuser.AddUsersToGroup(role, username)
 
 		if err != nil {
 			log.Printf("cannot create membership :%s ", err.Error())
 		}
 		log.Printf("user added to :%s ", role)
+	} else {
+		log.Printf("%s", err)
 	}
 }
 
@@ -361,7 +372,7 @@ func deleteOldUser(c config) {
 
 	for _, u := range getAllUsers() {
 
-		currentuser, err := user.LookupUser(u)
+		currentuser, err := unixuser.LookupUser(u)
 		if err != nil {
 			log.Printf("user not found :%s ", err.Error())
 		}
@@ -369,7 +380,7 @@ func deleteOldUser(c config) {
 		// check user is added from modul and login since  days
 		if currentuser.Gecos == app && getLastLogin(u).Before(time.Now().AddDate(0, 0, -c.DeleteUserDays)) {
 			log.Printf("user added from modul and no login since config days")
-			err := user.DelUser(u)
+			err := unixuser.DelUser(u)
 			if err != nil {
 				log.Printf("user not deleted :%s ", err.Error())
 			}
