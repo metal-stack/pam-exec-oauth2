@@ -277,14 +277,16 @@ func parseloginTime(currenttime string) time.Time {
 	layout := time.ANSIC
 	t, err := time.Parse(layout, currenttime)
 
-	if err != nil && !t.IsZero() {
-		fmt.Println(err)
+	if err != nil {
+		log.Fatal(err)
+		// if time parse is not possible then we use current time to do nothing
+		t = time.Now()
 	}
 	return t
 }
 
 // createUser this create user is not exsits
-func createGroup(role string, username string) {
+func createGroup(role string, username string) (bool, error) {
 	currentgroup, err := user.LookupGroup(role)
 
 	if err != nil {
@@ -294,22 +296,20 @@ func createGroup(role string, username string) {
 			gid, err := unixuser.AddGroup(role, username)
 
 			if err != nil {
-				log.Printf("cannot create group :%s ", err.Error())
+				return false, err
 			}
 
 			log.Print("group: " + role + " created gid: " + strconv.Itoa(gid))
-
-		} else {
-			log.Printf("group already exists: %s skip set member", username)
+			return true, nil
 		}
-	} else {
-		log.Printf("%s", err)
+		// if the group exists, a group with the same destination is created
+		return true, nil
 	}
-
+	return false, err
 }
 
 // addUserToGroup add user to group by roles
-func addUserToGroup(role string, username string) {
+func addUserToGroup(role string, username string) (bool, error) {
 	currentgroup, err := user.LookupGroup(role)
 
 	// if no group then add one
@@ -318,22 +318,24 @@ func addUserToGroup(role string, username string) {
 		err := unixuser.AddUsersToGroup(role, username)
 
 		if err != nil {
-			log.Printf("cannot create membership :%s ", err.Error())
+			return false, err
 		}
-		log.Printf("user added to :%s ", role)
-	} else {
-		log.Printf("%s", err)
+
+		log.Printf("cannot create membership :%s ", err.Error())
+		return true, nil
 	}
+	log.Printf("%s", err)
+	return true, nil
 }
 
 // getAllUsers list all users from passwd
-func getAllUsers() []string {
+func getAllUsers() ([]string, error) {
 
 	var Users []string
 	file, err := os.Open("/etc/passwd")
 
 	if err != nil {
-		fmt.Println(err)
+		return nil, err
 	}
 
 	defer file.Close()
@@ -360,29 +362,36 @@ func getAllUsers() []string {
 			break
 		}
 		if err != nil {
-			fmt.Println(err)
+			return nil, err
 		}
 
 	}
-	return Users
+	return Users, nil
 }
 
 // deleteOldUsers from added by pam modul
 func deleteOldUser(c config) {
 
-	for _, u := range getAllUsers() {
+	currentUsers, err := getAllUsers()
 
-		currentuser, err := unixuser.LookupUser(u)
-		if err != nil {
-			log.Printf("user not found :%s ", err.Error())
-		}
+	if err != nil {
 
-		// check user is added from modul and login since  days
-		if currentuser.Gecos == app && getLastLogin(u).Before(time.Now().AddDate(0, 0, -c.DeleteUserDays)) {
-			log.Printf("user added from modul and no login since config days")
-			err := unixuser.DelUser(u)
+		for _, u := range currentUsers {
+
+			currentuser, err := unixuser.LookupUser(u)
 			if err != nil {
-				log.Printf("user not deleted :%s ", err.Error())
+				log.Printf("user not found :%s ", err.Error())
+				continue
+			}
+
+			// check user is added from modul and login since  days
+			if currentuser.Gecos == app && getLastLogin(u).Before(time.Now().AddDate(0, 0, -c.DeleteUserDays)) {
+				log.Printf("user added from modul and no login since config days")
+				err := unixuser.DelUser(u)
+				if err != nil {
+					log.Printf("user not deleted :%s ", err.Error())
+					continue
+				}
 			}
 		}
 	}
