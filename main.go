@@ -33,7 +33,6 @@ import (
 	"os/user"
 	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -216,11 +215,19 @@ func validateClaims(t string, sufficientRoles []string, username string, addGrou
 	for _, role := range claims.Roles {
 
 		if addGroup {
-			createGroup(role, username)
+			_, err := createGroup(role, username)
+
+			if err != nil {
+				log.Printf("group: %s created" + role)
+			}
 		}
 
 		if addmembership {
-			addUserToGroup(role, username)
+			_, err := addUserToGroup(role, username)
+
+			if err != nil {
+				log.Printf("membership: user %s to %s created", role, username)
+			}
 		}
 
 		for _, sr := range sufficientRoles {
@@ -286,7 +293,7 @@ func parseloginTime(currenttime string) time.Time {
 }
 
 // createUser this create user is not exsits
-func createGroup(role string, username string) (bool, error) {
+func createGroup(role string, username string) (int, error) {
 	currentgroup, err := user.LookupGroup(role)
 
 	if err != nil {
@@ -296,16 +303,14 @@ func createGroup(role string, username string) (bool, error) {
 			gid, err := unixuser.AddGroup(role, username)
 
 			if err != nil {
-				return false, err
+				return -1, err
 			}
-
-			log.Print("group: " + role + " created gid: " + strconv.Itoa(gid))
-			return true, nil
+			return gid, nil
 		}
 		// if the group exists, a group with the same destination is created
-		return true, nil
+		return -1, nil
 	}
-	return false, err
+	return -1, err
 }
 
 // addUserToGroup add user to group by roles
