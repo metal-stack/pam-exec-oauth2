@@ -25,7 +25,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"log/syslog"
 	"os"
@@ -179,9 +178,11 @@ func main() {
 		log.Printf("error validate Claims:  %s", err)
 	}
 
-	if config.DeleteOidcUsers {
-		deleteOldUser(*config)
-	}
+	/*
+		if config.DeleteOidcUsers {
+			deleteOldUser(*config)
+		}
+	*/
 
 	log.Print("oauth2 authentication succeeded")
 	os.Exit(0)
@@ -347,6 +348,7 @@ func addUserToGroup(role string, username string) (bool, error) {
 	return true, nil
 }
 
+/*
 // getAllUsers list all users from passwd
 func getAllUsers() ([]string, error) {
 
@@ -416,3 +418,4 @@ func deleteOldUser(c config) error {
 	}
 	return nil
 }
+*/
