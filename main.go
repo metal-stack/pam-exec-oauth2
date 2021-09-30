@@ -222,20 +222,26 @@ func validateClaims(t string, sufficientRoles []string, username string, addGrou
 	for _, role := range claims.Roles {
 
 		if addGroup {
-			result, err := createGroup(role, username)
+			resultgroup, err := createGroup(role, username)
 
 			if err != nil {
 				log.Printf("can not create group: %s error: %s"+role, err)
 			}
-			if result {
 
-				log.Printf("group %s is present ", role)
+			if addmembership {
 
-				if addmembership {
-					_, err := addUserToGroup(role, username)
+				currentuser, err := unixuser.LookupUser(username)
+
+				// if group and user is present and there is no erro try to set membership
+				if resultgroup && currentuser != nil && err == nil {
+
+					resultmembership, err := addUserToGroup(role, username)
 
 					if err != nil {
-						log.Printf("membership: user %s to %s created", role, username)
+						log.Printf("membership: user %s to %s is not created err: %s", role, username, err)
+					}
+					if resultmembership {
+						log.Printf("membership: user %s to %s is created", role, username)
 					}
 				}
 			}
@@ -309,36 +315,35 @@ func parseloginTime(currenttime string) time.Time {
 func createGroup(role string, username string) (bool, error) {
 	currentgroup, err := user.LookupGroup(role)
 
-	if err != nil && currentgroup == nil {
-
-		_, err := unixuser.AddGroup(role, username)
+	if currentgroup != nil {
 
 		if err != nil {
-			return false, err
+
+			_, err := unixuser.AddGroup(role, username)
+
+			if err != nil {
+				// there is no group but one error
+				return false, err
+			}
+			// group added
+			return true, nil
 		}
-		// group added
-		return true, nil
+
+		return false, err
 	}
+	// there is already a group
 	return true, nil
 }
 
 // addUserToGroup add user to group by roles
 func addUserToGroup(role string, username string) (bool, error) {
-	currentgroup, err := user.LookupGroup(role)
 
-	// if no group then add one
-	if currentgroup == nil {
+	err := unixuser.AddUsersToGroup(role, username)
 
-		err := unixuser.AddUsersToGroup(role, username)
-
-		if err != nil {
-			return false, err
-		}
-
-		log.Printf("cannot create membership :%s ", err.Error())
-		return true, nil
+	if err != nil {
+		return false, err
 	}
-	log.Printf("%s", err)
+
 	return true, nil
 }
 
