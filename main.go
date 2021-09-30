@@ -123,7 +123,13 @@ func main() {
 
 	// add user here only if user is in passwd the login worked
 	if config.CreateUser {
-		createUser(username)
+
+		result, err := createUser(username)
+
+		if result && err == nil {
+			log.Printf("cannot create user %s already exsits", username)
+		}
+
 	}
 
 	password := ""
@@ -168,8 +174,9 @@ func main() {
 
 	// check group for authentication is in token
 	err = validateClaims(oauth2Token.AccessToken, config.SufficientRoles, username, config.CreateGroup, config.CreateGroupMember)
+
 	if err != nil {
-		log.Fatal(err.Error())
+		log.Printf("error validate Claims:  %s", err)
 	}
 
 	if config.DeleteOidcUsers {
@@ -215,18 +222,22 @@ func validateClaims(t string, sufficientRoles []string, username string, addGrou
 	for _, role := range claims.Roles {
 
 		if addGroup {
-			_, err := createGroup(role, username)
+			result, err := createGroup(role, username)
 
 			if err != nil {
-				log.Printf("group: %s created" + role)
+				log.Printf("can not create group: %s error: %s"+role, err)
 			}
-		}
+			if result {
 
-		if addmembership {
-			_, err := addUserToGroup(role, username)
+				log.Printf("group %s is present ", role)
 
-			if err != nil {
-				log.Printf("membership: user %s to %s created", role, username)
+				if addmembership {
+					_, err := addUserToGroup(role, username)
+
+					if err != nil {
+						log.Printf("membership: user %s to %s created", role, username)
+					}
+				}
 			}
 		}
 
@@ -241,26 +252,28 @@ func validateClaims(t string, sufficientRoles []string, username string, addGrou
 }
 
 // createUser this create user is not exsits
-func createUser(username string) {
+func createUser(username string) (bool, error) {
 	currentuser, err := unixuser.LookupUser(username)
 
-	if err != nil {
-		// if no user then add one
-		if currentuser == nil {
+	if currentuser != nil {
+
+		if err != nil {
 
 			cmd := exec.Command("usr/sbin/useradd", "-m", "-s", "/bin/bash", "-c", app, username)
-			stdoutStderr, err := cmd.CombinedOutput()
-			if err != nil {
-				log.Printf("user already exists: %s ", err.Error())
-			}
+			_, err := cmd.CombinedOutput()
 
-			log.Printf("%s", stdoutStderr)
-		} else {
-			log.Printf("user already exists: %s skip create", username)
+			if err != nil {
+				// there is a error on create user return err
+				return false, err
+			}
+			// user created return success as true and no error
+			return true, nil
 		}
-	} else {
-		log.Printf("%s", err)
+		// there is a error return on lookup user err
+		return false, err
 	}
+	// there is a local user
+	return false, nil
 }
 
 // getLastLogin for a user
@@ -293,24 +306,20 @@ func parseloginTime(currenttime string) time.Time {
 }
 
 // createUser this create user is not exsits
-func createGroup(role string, username string) (int, error) {
+func createGroup(role string, username string) (bool, error) {
 	currentgroup, err := user.LookupGroup(role)
 
-	if err != nil {
-		// if no group then add one
-		if currentgroup == nil {
+	if err != nil && currentgroup == nil {
 
-			gid, err := unixuser.AddGroup(role, username)
+		_, err := unixuser.AddGroup(role, username)
 
-			if err != nil {
-				return -1, err
-			}
-			return gid, nil
+		if err != nil {
+			return false, err
 		}
-		// if the group exists, a group with the same destination is created
-		return -1, nil
+		// group added
+		return true, nil
 	}
-	return -1, err
+	return true, nil
 }
 
 // addUserToGroup add user to group by roles
@@ -336,7 +345,7 @@ func addUserToGroup(role string, username string) (bool, error) {
 // getAllUsers list all users from passwd
 func getAllUsers() ([]string, error) {
 
-	var Users []string
+	var currentusers []string
 	file, err := os.Open("/etc/passwd")
 
 	if err != nil {
@@ -358,9 +367,8 @@ func getAllUsers() ([]string, error) {
 			})
 
 			if len(lineSlice) > 0 {
-				Users = append(Users, lineSlice[0])
+				currentusers = append(currentusers, lineSlice[0])
 			}
-
 		}
 
 		if err == io.EOF {
@@ -371,33 +379,35 @@ func getAllUsers() ([]string, error) {
 		}
 
 	}
-	return Users, nil
+	return currentusers, nil
 }
 
 // deleteOldUsers from added by pam modul
-func deleteOldUser(c config) {
+func deleteOldUser(c config) error {
 
 	currentUsers, err := getAllUsers()
 
 	if err != nil {
+		return err
+	}
 
-		for _, u := range currentUsers {
+	for _, u := range currentUsers {
 
-			currentuser, err := unixuser.LookupUser(u)
+		currentuser, err := unixuser.LookupUser(u)
+		if err != nil {
+			log.Printf("user not found :%s ", err.Error())
+			continue
+		}
+
+		// check user is added from modul and login since  days
+		if currentuser.Gecos == app && getLastLogin(u).Before(time.Now().AddDate(0, 0, -c.DeleteUserDays)) {
+			log.Printf("user added from modul and no login since config days")
+			err := unixuser.DelUser(u)
 			if err != nil {
-				log.Printf("user not found :%s ", err.Error())
+				log.Printf("user not deleted :%s ", err.Error())
 				continue
-			}
-
-			// check user is added from modul and login since  days
-			if currentuser.Gecos == app && getLastLogin(u).Before(time.Now().AddDate(0, 0, -c.DeleteUserDays)) {
-				log.Printf("user added from modul and no login since config days")
-				err := unixuser.DelUser(u)
-				if err != nil {
-					log.Printf("user not deleted :%s ", err.Error())
-					continue
-				}
 			}
 		}
 	}
+	return nil
 }
