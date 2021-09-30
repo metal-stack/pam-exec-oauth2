@@ -32,8 +32,6 @@ import (
 	"os/user"
 	"path"
 	"path/filepath"
-	"strings"
-	"time"
 
 	unixuser "github.com/tredoe/osutil/user"
 
@@ -283,35 +281,6 @@ func createUser(username string) (bool, error) {
 	return false, nil
 }
 
-// getLastLogin for a user
-func getLastLogin(username string) time.Time {
-
-	cmd := exec.Command("last", "-1", username)
-	stdoutStderr, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Printf("No lastlogin: %s ", err.Error())
-	}
-
-	s := string(stdoutStderr)
-	split := strings.Split(s, " ")
-	x := strings.TrimSpace(split[2] + " " + split[3] + " " + split[4] + " " + split[5] + " " + split[6] + " " + split[7])
-	return parseloginTime(x)
-}
-
-// parseloginTime get time from pased last command
-func parseloginTime(currenttime string) time.Time {
-
-	layout := time.ANSIC
-	t, err := time.Parse(layout, currenttime)
-
-	if err != nil {
-		log.Fatal(err)
-		// if time parse is not possible then we use current time to do nothing
-		t = time.Now()
-	}
-	return t
-}
-
 // createUser this create user is not exsits
 func createGroup(role string, username string) (bool, error) {
 	currentgroup, err := user.LookupGroup(role)
@@ -349,6 +318,38 @@ func addUserToGroup(role string, username string) (bool, error) {
 }
 
 /*
+
+
+// getLastLogin for a user
+func getLastLogin(username string) time.Time {
+
+	cmd := exec.Command("last", "-1", username)
+	stdoutStderr, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("No lastlogin: %s ", err.Error())
+	}
+
+	s := string(stdoutStderr)
+	split := strings.Split(s, " ")
+	x := strings.TrimSpace(split[2] + " " + split[3] + " " + split[4] + " " + split[5] + " " + split[6] + " " + split[7])
+	return parseloginTime(x)
+}
+
+// parseloginTime get time from pased last command
+func parseloginTime(currenttime string) time.Time {
+
+	layout := time.ANSIC
+	t, err := time.Parse(layout, currenttime)
+
+	if err != nil {
+		log.Fatal(err)
+		// if time parse is not possible then we use current time to do nothing
+		t = time.Now()
+	}
+	return t
+}
+
+
 // getAllUsers list all users from passwd
 func getAllUsers() ([]string, error) {
 
