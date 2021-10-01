@@ -229,7 +229,16 @@ func validateClaims(t string, sufficientRoles []string, username string, addGrou
 	for _, role := range claims.Roles {
 
 		if addGroup {
+
 			resultgroup, err := createGroup(role, username)
+
+			if resultgroup && err != nil {
+				log.Printf("group %s created", role)
+			}
+
+			if !resultgroup && err == nil {
+				log.Printf("cannot create group %s already exsits", username)
+			}
 
 			if err != nil {
 				log.Printf("can not create group: %s error: %s"+role, err)
