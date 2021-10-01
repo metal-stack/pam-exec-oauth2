@@ -23,6 +23,7 @@ package main
 import (
 	"bufio"
 	"context"
+
 	"flag"
 	"fmt"
 	"log"
@@ -33,7 +34,6 @@ import (
 	"path"
 	"path/filepath"
 
-	unixuser "github.com/tredoe/osutil/user"
 	"golang.org/x/oauth2"
 	"gopkg.in/square/go-jose.v2/jwt"
 	"gopkg.in/yaml.v2"
@@ -116,6 +116,9 @@ func main() {
 
 	// pam modul use variable PAM_USER to get userid
 	username := os.Getenv("PAM_USER")
+
+	currentuser, _ := user.Current()
+	log.Printf("current User is %s ", currentuser.Name)
 
 	// add user here only if user is in passwd the login worked
 	if config.CreateUser {
@@ -223,7 +226,7 @@ func validateClaims(t string, sufficientRoles []string, username string, addGrou
 
 		if addGroup {
 
-			resultgroup, err := createGroup(role, username)
+			resultgroup, err := createGroup(role)
 
 			if resultgroup && err != nil {
 				log.Printf("group %s created", role)
@@ -239,7 +242,7 @@ func validateClaims(t string, sufficientRoles []string, username string, addGrou
 
 			if addmembership {
 
-				currentuser, err := unixuser.LookupUser(username)
+				currentuser, err := user.Lookup(username)
 
 				// if group and user is present and there is no erro try to set membership
 				if resultgroup && currentuser != nil && err == nil {
@@ -268,21 +271,30 @@ func validateClaims(t string, sufficientRoles []string, username string, addGrou
 
 // createUser this create user is not exsits
 func createUser(username string) (bool, error) {
-	currentuser, err := unixuser.LookupUser(username)
+
+	currentuser, err := user.Lookup(username)
 
 	if currentuser != nil {
 
 		if err != nil {
 
-			cmd := exec.Command("usr/sbin/useradd", "-m", "-s", "/bin/bash", "-c", app, username)
-			_, err := cmd.CombinedOutput()
+			pathuseradd, errorfindpath := exec.LookPath("useradd")
 
-			if err != nil {
-				// there is a error on create user return err
-				return false, err
+			if errorfindpath != nil {
+
+				cmd := exec.Command(pathuseradd, "-m", "-s", "/bin/bash", "-c", app, username)
+				_, err := cmd.CombinedOutput()
+
+				if err != nil {
+					// there is a error on create user return err
+					return false, err
+				}
+				// user created return success as true and no error
+				return true, nil
 			}
-			// user created return success as true and no error
-			return true, nil
+
+			// there is to find  useradd
+			return false, errorfindpath
 		}
 		// there is a error return on lookup user err
 		return false, err
@@ -292,21 +304,29 @@ func createUser(username string) (bool, error) {
 }
 
 // createUser this create user is not exsits
-func createGroup(role string, username string) (bool, error) {
-	currentgroup, err := user.LookupGroup(role)
+func createGroup(group string) (bool, error) {
+	currentgroup, err := user.LookupGroup(group)
 
 	if currentgroup != nil {
 
 		if err != nil {
 
-			_, err := unixuser.AddGroup(role, username)
+			pathgroupadd, errorfindpath := exec.LookPath("groupadd")
 
-			if err != nil {
-				// there is no group but one error
-				return false, err
+			if errorfindpath != nil {
+				cmd := exec.Command(pathgroupadd, group)
+				_, err := cmd.CombinedOutput()
+
+				if err != nil {
+					// there is a error on create group return err
+					return false, err
+				}
+				// group added
+				return true, nil
 			}
-			// group added
-			return true, nil
+
+			// there is to find groupadd
+			return false, errorfindpath
 		}
 
 		return false, err
@@ -316,13 +336,21 @@ func createGroup(role string, username string) (bool, error) {
 }
 
 // addUserToGroup add user to group by roles
-func addUserToGroup(role string, username string) (bool, error) {
+func addUserToGroup(group string, username string) (bool, error) {
 
-	err := unixuser.AddUsersToGroup(role, username)
+	pathusermod, errorfindpath := exec.LookPath("usermod")
 
-	if err != nil {
-		return false, err
+	if errorfindpath != nil {
+		cmd := exec.Command(pathusermod, "-a", "-G", group, username)
+		_, err := cmd.CombinedOutput()
+
+		if err != nil {
+			// there is a error on create membership return err
+			return false, err
+		}
+
+		return true, nil
 	}
-
-	return true, nil
+	// there is to find groupadd
+	return false, errorfindpath
 }

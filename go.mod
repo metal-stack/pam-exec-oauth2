@@ -9,5 +9,4 @@ require (
 	google.golang.org/appengine v1.6.7 // indirect
 	gopkg.in/square/go-jose.v2 v2.6.0
 	gopkg.in/yaml.v2 v2.4.0
-	github.com/tredoe/osutil v1.0.5
 )
