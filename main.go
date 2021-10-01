@@ -34,7 +34,6 @@ import (
 	"path/filepath"
 
 	unixuser "github.com/tredoe/osutil/user"
-
 	"golang.org/x/oauth2"
 	"gopkg.in/square/go-jose.v2/jwt"
 	"gopkg.in/yaml.v2"
@@ -184,12 +183,6 @@ func main() {
 		log.Printf("error validate Claims:  %s", err)
 	}
 
-	/*
-		if config.DeleteOidcUsers {
-			deleteOldUser(*config)
-		}
-	*/
-
 	log.Print("oauth2 authentication succeeded")
 	os.Exit(0)
 }
@@ -333,107 +326,3 @@ func addUserToGroup(role string, username string) (bool, error) {
 
 	return true, nil
 }
-
-/*
-
-
-// getLastLogin for a user
-func getLastLogin(username string) time.Time {
-
-	cmd := exec.Command("last", "-1", username)
-	stdoutStderr, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Printf("No lastlogin: %s ", err.Error())
-	}
-
-	s := string(stdoutStderr)
-	split := strings.Split(s, " ")
-	x := strings.TrimSpace(split[2] + " " + split[3] + " " + split[4] + " " + split[5] + " " + split[6] + " " + split[7])
-	return parseloginTime(x)
-}
-
-// parseloginTime get time from pased last command
-func parseloginTime(currenttime string) time.Time {
-
-	layout := time.ANSIC
-	t, err := time.Parse(layout, currenttime)
-
-	if err != nil {
-		log.Fatal(err)
-		// if time parse is not possible then we use current time to do nothing
-		t = time.Now()
-	}
-	return t
-}
-
-
-// getAllUsers list all users from passwd
-func getAllUsers() ([]string, error) {
-
-	var currentusers []string
-	file, err := os.Open("/etc/passwd")
-
-	if err != nil {
-		return nil, err
-	}
-
-	defer file.Close()
-
-	reader := bufio.NewReader(file)
-
-	for {
-		line, err := reader.ReadString('\n')
-
-		// skip all line starting with #
-		if equal := strings.Index(line, "#"); equal < 0 {
-			// get the username and description
-			lineSlice := strings.FieldsFunc(line, func(divide rune) bool {
-				return divide == ':' // we divide at colon
-			})
-
-			if len(lineSlice) > 0 {
-				currentusers = append(currentusers, lineSlice[0])
-			}
-		}
-
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-
-	}
-	return currentusers, nil
-}
-
-// deleteOldUsers from added by pam modul
-func deleteOldUser(c config) error {
-
-	currentUsers, err := getAllUsers()
-
-	if err != nil {
-		return err
-	}
-
-	for _, u := range currentUsers {
-
-		currentuser, err := unixuser.LookupUser(u)
-		if err != nil {
-			log.Printf("user not found :%s ", err.Error())
-			continue
-		}
-
-		// check user is added from modul and login since  days
-		if currentuser.Gecos == app && getLastLogin(u).Before(time.Now().AddDate(0, 0, -c.DeleteUserDays)) {
-			log.Printf("user added from modul and no login since config days")
-			err := unixuser.DelUser(u)
-			if err != nil {
-				log.Printf("user not deleted :%s ", err.Error())
-				continue
-			}
-		}
-	}
-	return nil
-}
-*/
