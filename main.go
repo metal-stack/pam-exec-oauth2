@@ -124,7 +124,15 @@ func main() {
 		result, err := createUser(username)
 
 		if result && err == nil {
+			log.Printf("user %s created", username)
+		}
+
+		if !result && err == nil {
 			log.Printf("cannot create user %s already exsits", username)
+		}
+
+		if err != nil {
+			log.Printf("cannot create user %s err: %s", username, err)
 		}
 
 	}
