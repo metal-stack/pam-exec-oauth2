@@ -43,21 +43,17 @@ import (
 const app = "pam-exec-oauth2"
 
 // config define openid Connect parameters
-// and setting for this modul
+// and setting for this module
 type config struct {
-	ClientID          string   `yaml:"client-id"`
-	ClientSecret      string   `yaml:"client-secret"`
-	RedirectURL       string   `yaml:"redirect-url"`
-	Scopes            []string `yaml:"scopes"`
-	EndpointAuthURL   string   `yaml:"endpoint-auth-url"`
-	EndpointTokenURL  string   `yaml:"endpoint-token-url"`
-	UsernameFormat    string   `yaml:"username-format"`
-	SufficientRoles   []string `yaml:"sufficient-roles"`
-	CreateUser        bool     `yaml:"createuser"`
-	CreateGroup       bool     `yaml:"creategroup"`
-	CreateGroupMember bool     `yaml:"creategroupmember"`
-	DeleteOidcUsers   bool     `yaml:"delete-oidc-users"`
-	DeleteUserDays    int      `yaml:"delete-users-days"`
+	ClientID         string   `yaml:"client-id"`
+	ClientSecret     string   `yaml:"client-secret"`
+	RedirectURL      string   `yaml:"redirect-url"`
+	Scopes           []string `yaml:"scopes"`
+	EndpointAuthURL  string   `yaml:"endpoint-auth-url"`
+	EndpointTokenURL string   `yaml:"endpoint-token-url"`
+	UsernameFormat   string   `yaml:"username-format"`
+	SufficientRoles  []string `yaml:"sufficient-roles"`
+	CreateUser       bool     `yaml:"createuser"`
 }
 
 // main primary entry
