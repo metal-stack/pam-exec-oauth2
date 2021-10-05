@@ -219,7 +219,7 @@ func createUser(username string) error {
 	if err != nil && err.Error() != user.UnknownUserError(username).Error() {
 		return fmt.Errorf("unable to lookup user %w", err)
 	}
-	useradd, err := exec.LookPath("useradd")
+	useradd, err := exec.LookPath("/usr/sbin/useradd")
 
 	if err != nil {
 		return fmt.Errorf("useradd command was not found %w", err)
