@@ -117,30 +117,15 @@ func main() {
 	// pam modul use variable PAM_USER to get userid
 	username := os.Getenv("PAM_USER")
 
-	currentuser, _ := user.Current()
-	log.Printf("current User is %s ", currentuser.Name)
-
 	// add user here only if user is in passwd the login worked
 	if config.CreateUser {
-
-		result, err := createUser(username)
-
-		if result && err == nil {
-			log.Printf("user %s created", username)
-		}
-
-		if !result && err == nil {
-			log.Printf("cannot create user %s already exsits", username)
-		}
-
+		err := createUser(username)
 		if err != nil {
-			log.Printf("cannot create user %s err: %s", username, err)
+			log.Fatal(err.Error())
 		}
-
 	}
 
 	password := ""
-
 	// wait for stdin to get password from user
 	s := bufio.NewScanner(os.Stdin)
 	if s.Scan() {
@@ -180,10 +165,9 @@ func main() {
 	}
 
 	// check group for authentication is in token
-	err = validateClaims(oauth2Token.AccessToken, config.SufficientRoles, username, config.CreateGroup, config.CreateGroupMember)
-
+	err = validateClaims(oauth2Token.AccessToken, config.SufficientRoles)
 	if err != nil {
-		log.Printf("error validate Claims:  %s", err)
+		log.Fatalf("error validate Claims: %s", err)
 	}
 
 	log.Print("oauth2 authentication succeeded")
@@ -211,8 +195,8 @@ type myClaim struct {
 	Roles []string `json:"roles,omitempty"`
 }
 
-// validateClaims check role fom config sufficetRoles is in token roles claim
-func validateClaims(t string, sufficientRoles []string, username string, addGroup bool, addmembership bool) error {
+// validateClaims check role fom config sufficientRoles is in token roles claim
+func validateClaims(t string, sufficientRoles []string) error {
 	token, err := jwt.ParseSigned(t)
 	if err != nil {
 		return fmt.Errorf("error parsing token: %w", err)
@@ -223,42 +207,6 @@ func validateClaims(t string, sufficientRoles []string, username string, addGrou
 		return fmt.Errorf("unable to extract claims from token: %w", err)
 	}
 	for _, role := range claims.Roles {
-
-		if addGroup {
-
-			resultgroup, err := createGroup(role)
-
-			if resultgroup && err != nil {
-				log.Printf("group %s created", role)
-			}
-
-			if !resultgroup && err == nil {
-				log.Printf("cannot create group %s already exsits", username)
-			}
-
-			if err != nil {
-				log.Printf("can not create group: %s error: %s"+role, err)
-			}
-
-			if addmembership {
-
-				currentuser, err := user.Lookup(username)
-
-				// if group and user is present and there is no erro try to set membership
-				if resultgroup && currentuser != nil && err == nil {
-
-					resultmembership, err := addUserToGroup(role, username)
-
-					if err != nil {
-						log.Printf("membership: user %s to %s is not created err: %s", role, username, err)
-					}
-					if resultmembership {
-						log.Printf("membership: user %s to %s is created", role, username)
-					}
-				}
-			}
-		}
-
 		for _, sr := range sufficientRoles {
 			if role == sr {
 				log.Print("validateClaims access granted role " + role + " is in token")
@@ -269,88 +217,22 @@ func validateClaims(t string, sufficientRoles []string, username string, addGrou
 	return fmt.Errorf("role: %s not found", sufficientRoles)
 }
 
-// createUser this create user is not exsits
-func createUser(username string) (bool, error) {
-
-	currentuser, err := user.Lookup(username)
-
-	if currentuser != nil {
-
-		if err != nil {
-
-			pathuseradd, errorfindpath := exec.LookPath("useradd")
-
-			if errorfindpath != nil {
-
-				cmd := exec.Command(pathuseradd, "-m", "-s", "/bin/bash", "-c", app, username)
-				_, err := cmd.CombinedOutput()
-
-				if err != nil {
-					// there is a error on create user return err
-					return false, err
-				}
-				// user created return success as true and no error
-				return true, nil
-			}
-
-			// there is to find  useradd
-			return false, errorfindpath
-		}
-		// there is a error return on lookup user err
-		return false, err
+// createUser if it does not already exists
+func createUser(username string) error {
+	_, err := user.Lookup(username)
+	if err != nil && err.Error() != user.UnknownUserError(username).Error() {
+		return fmt.Errorf("unable to lookup user %w", err)
 	}
-	// there is a local user
-	return false, nil
-}
+	useradd, err := exec.LookPath("useradd")
 
-// createUser this create user is not exsits
-func createGroup(group string) (bool, error) {
-	currentgroup, err := user.LookupGroup(group)
-
-	if currentgroup != nil {
-
-		if err != nil {
-
-			pathgroupadd, errorfindpath := exec.LookPath("groupadd")
-
-			if errorfindpath != nil {
-				cmd := exec.Command(pathgroupadd, group)
-				_, err := cmd.CombinedOutput()
-
-				if err != nil {
-					// there is a error on create group return err
-					return false, err
-				}
-				// group added
-				return true, nil
-			}
-
-			// there is to find groupadd
-			return false, errorfindpath
-		}
-
-		return false, err
+	if err != nil {
+		return fmt.Errorf("useradd command was not found %w", err)
 	}
-	// there is already a group
-	return true, nil
-}
 
-// addUserToGroup add user to group by roles
-func addUserToGroup(group string, username string) (bool, error) {
-
-	pathusermod, errorfindpath := exec.LookPath("usermod")
-
-	if errorfindpath != nil {
-		cmd := exec.Command(pathusermod, "-a", "-G", group, username)
-		_, err := cmd.CombinedOutput()
-
-		if err != nil {
-			// there is a error on create membership return err
-			return false, err
-		}
-
-		return true, nil
+	cmd := exec.Command(useradd, "-m", "-s", "/bin/bash", "-c", app, username)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("unable to create user output:%s %w", string(out), err)
 	}
-	// there is to find groupadd
-	return false, errorfindpath
+	return nil
 }
