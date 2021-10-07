@@ -300,7 +300,7 @@ func modifyUser(username string, groups []string) error {
 	return nil
 }
 func deleteUser(username string) error {
-	_, err := user.Lookup(username)
+	u, err := user.Lookup(username)
 	if err != nil && err.Error() != user.UnknownUserError(username).Error() {
 		return fmt.Errorf("unable to lookup user %w", err)
 	}
@@ -308,6 +308,11 @@ func deleteUser(username string) error {
 	if err != nil {
 		log.Printf("user %s already deleted\n", username)
 		// nolint:nilerr
+		return nil
+	}
+
+	if u.Name != app {
+		log.Printf("user %s was not created by %s\n", username, app)
 		return nil
 	}
 
