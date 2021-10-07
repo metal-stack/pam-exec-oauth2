@@ -141,7 +141,6 @@ func main() {
 
 	// authentication agains oidc provider
 	// load configuration from yaml config
-	log.Printf("Load Config OpenID Modul")
 	oauth2Config := oauth2.Config{
 		ClientID:     config.ClientID,
 		ClientSecret: config.ClientSecret,
@@ -154,7 +153,7 @@ func main() {
 	}
 
 	// send authentication request to oidc provider
-	log.Printf("Call OIDC Provider and get Token")
+	log.Printf("call OIDC Provider and get token")
 
 	oauth2Token, err := oauth2Config.PasswordCredentialsToken(
 		context.Background(),
