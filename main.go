@@ -54,6 +54,7 @@ type config struct {
 	EndpointTokenURL string   `yaml:"endpoint-token-url"`
 	UsernameFormat   string   `yaml:"username-format"`
 	SufficientRoles  []string `yaml:"sufficient-roles"`
+	AllowedRoles     []string `yaml:"allowed-roles"`
 	CreateUser       bool     `yaml:"createuser"`
 }
 
@@ -159,9 +160,19 @@ func main() {
 		log.Fatalf("error validate Claims: %s", err)
 	}
 
+	// Filter out all not allowed roles comming from OIDC
+	osRoles := []string{}
+	for _, r := range roles {
+		for _, ar := range config.AllowedRoles {
+			if r == ar {
+				osRoles = append(osRoles, r)
+			}
+		}
+	}
+
 	// add user here only if user is in passwd the login worked
 	if config.CreateUser {
-		err := createUser(username, roles)
+		err := createUser(username, osRoles)
 		if err != nil {
 			log.Fatal(err.Error())
 		}

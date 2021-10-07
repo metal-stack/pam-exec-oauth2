@@ -9,4 +9,6 @@ endpoint-token-url: "https://login.windows.net/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxx
 username-format: "%s@example.org"
 sufficient-roles: 
     - "serverAccess"
+allowed-roles: 
+    - "cumulus"
 createuser: true
