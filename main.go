@@ -23,7 +23,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"strings"
 
 	"flag"
 	"fmt"
@@ -246,7 +245,8 @@ func createUser(username string, roles []string) error {
 
 	args := []string{"-m", "-s", "/bin/bash", "-c", app, username}
 	if len(roles) > 0 {
-		args = append(args, "-G", strings.Join(roles, " "))
+		args = append(args, "-G")
+		args = append(args, roles...)
 	}
 
 	cmd := exec.Command(useradd, args...)
