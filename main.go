@@ -23,6 +23,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"strings"
 
 	"flag"
 	"fmt"
@@ -113,14 +114,6 @@ func main() {
 	// pam modul use variable PAM_USER to get userid
 	username := os.Getenv("PAM_USER")
 
-	// add user here only if user is in passwd the login worked
-	if config.CreateUser {
-		err := createUser(username)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-	}
-
 	password := ""
 	// wait for stdin to get password from user
 	s := bufio.NewScanner(os.Stdin)
@@ -161,9 +154,17 @@ func main() {
 	}
 
 	// check group for authentication is in token
-	err = validateClaims(oauth2Token.AccessToken, config.SufficientRoles)
+	roles, err := validateClaims(oauth2Token.AccessToken, config.SufficientRoles)
 	if err != nil {
 		log.Fatalf("error validate Claims: %s", err)
+	}
+
+	// add user here only if user is in passwd the login worked
+	if config.CreateUser {
+		err := createUser(username, roles)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
 	}
 
 	log.Print("oauth2 authentication succeeded")
@@ -185,36 +186,36 @@ func readConfig(filename string) (*config, error) {
 	return &c, nil
 }
 
-// myClain define token struct
+// myClaim define token struct
 type myClaim struct {
 	jwt.Claims
 	Roles []string `json:"roles,omitempty"`
 }
 
 // validateClaims check role fom config sufficientRoles is in token roles claim
-func validateClaims(t string, sufficientRoles []string) error {
+func validateClaims(t string, sufficientRoles []string) ([]string, error) {
 	token, err := jwt.ParseSigned(t)
 	if err != nil {
-		return fmt.Errorf("error parsing token: %w", err)
+		return nil, fmt.Errorf("error parsing token: %w", err)
 	}
 
 	claims := myClaim{}
 	if err := token.UnsafeClaimsWithoutVerification(&claims); err != nil {
-		return fmt.Errorf("unable to extract claims from token: %w", err)
+		return nil, fmt.Errorf("unable to extract claims from token: %w", err)
 	}
 	for _, role := range claims.Roles {
 		for _, sr := range sufficientRoles {
 			if role == sr {
 				log.Print("validateClaims access granted role " + role + " is in token")
-				return nil
+				return claims.Roles, nil
 			}
 		}
 	}
-	return fmt.Errorf("role: %s not found", sufficientRoles)
+	return nil, fmt.Errorf("role: %s not found", sufficientRoles)
 }
 
 // createUser if it does not already exists
-func createUser(username string) error {
+func createUser(username string, roles []string) error {
 	_, err := user.Lookup(username)
 	if err != nil && err.Error() != user.UnknownUserError(username).Error() {
 		return fmt.Errorf("unable to lookup user %w", err)
@@ -231,7 +232,12 @@ func createUser(username string) error {
 		return fmt.Errorf("useradd command was not found %w", err)
 	}
 
-	cmd := exec.Command(useradd, "-m", "-s", "/bin/bash", "-c", app, username)
+	args := []string{"-m", "-s", "/bin/bash", "-c", app, username}
+	if len(roles) > 0 {
+		args = append(args, "-G", strings.Join(roles, " "))
+	}
+
+	cmd := exec.Command(useradd, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("unable to create user output:%s %w", string(out), err)
