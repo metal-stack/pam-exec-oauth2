@@ -75,7 +75,7 @@ func main() {
 	debug := false
 	debugFlg := flag.Bool("debug", false, "enable debug")
 	stdout := false
-	stdoutFlg := flag.Bool("stdout", false, "log to stdout instead of syslog")
+	stdoutFlg := flag.Bool("stdout", true, "log to stdout instead of syslog")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
 		flag.PrintDefaults()
@@ -86,12 +86,12 @@ func main() {
 		stdout = *stdoutFlg
 	}
 
-	// initiate logging
-	sysLog, err := syslog.New(syslog.LOG_INFO, app)
-	if err != nil {
-		log.Fatal(err)
-	}
 	if !stdout {
+		// initiate logging
+		sysLog, err := syslog.New(syslog.LOG_INFO, app)
+		if err != nil {
+			log.Fatal(err)
+		}
 		log.SetOutput(sysLog)
 	}
 
@@ -112,8 +112,25 @@ func main() {
 		log.Printf("config:%#v\n", config)
 	}
 
-	// pam modul use variable PAM_USER to get userid
+	// pam module use variable PAM_USER to get userid
 	username := os.Getenv("PAM_USER")
+
+	pamtype := os.Getenv("PAM_TYPE")
+	if pamtype == "close_session" {
+		err = deleteUser(username)
+		if err != nil {
+			log.Fatalf(err.Error())
+		}
+		return
+	}
+
+	// add user here only if user is in passwd the login worked
+	if config.CreateUser {
+		err := createUser(username)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+	}
 
 	password := ""
 	// wait for stdin to get password from user
@@ -124,7 +141,7 @@ func main() {
 
 	// authentication agains oidc provider
 	// load configuration from yaml config
-	log.Print("Load Config OpenID Modul ")
+	log.Printf("Load Config OpenID Modul")
 	oauth2Config := oauth2.Config{
 		ClientID:     config.ClientID,
 		ClientSecret: config.ClientSecret,
@@ -137,7 +154,7 @@ func main() {
 	}
 
 	// send authentication request to oidc provider
-	log.Print("Call OIDC Provider and get Token")
+	log.Printf("Call OIDC Provider and get Token")
 
 	oauth2Token, err := oauth2Config.PasswordCredentialsToken(
 		context.Background(),
@@ -161,21 +178,17 @@ func main() {
 	}
 
 	// Filter out all not allowed roles comming from OIDC
-	osRoles := []string{}
+	groups := []string{}
 	for _, r := range roles {
 		for _, ar := range config.AllowedRoles {
 			if r == ar {
-				osRoles = append(osRoles, r)
+				groups = append(groups, r)
 			}
 		}
 	}
-
-	// add user here only if user is in passwd the login worked
-	if config.CreateUser {
-		err := createUser(username, osRoles)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
+	err = modifyUser(username, groups)
+	if err != nil {
+		log.Fatalf("unable to add groups: %s", err)
 	}
 
 	log.Print("oauth2 authentication succeeded")
@@ -226,7 +239,7 @@ func validateClaims(t string, sufficientRoles []string) ([]string, error) {
 }
 
 // createUser if it does not already exists
-func createUser(username string, roles []string) error {
+func createUser(username string) error {
 	_, err := user.Lookup(username)
 	if err != nil && err.Error() != user.UnknownUserError(username).Error() {
 		return fmt.Errorf("unable to lookup user %w", err)
@@ -244,15 +257,71 @@ func createUser(username string, roles []string) error {
 	}
 
 	args := []string{"-m", "-s", "/bin/bash", "-c", app, username}
-	if len(roles) > 0 {
-		args = append(args, "-G")
-		args = append(args, roles...)
-	}
-
 	cmd := exec.Command(useradd, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("unable to create user output:%s %w", string(out), err)
+	}
+	return nil
+}
+
+// modifyUser add groups to the user
+func modifyUser(username string, groups []string) error {
+	_, err := user.Lookup(username)
+	if err != nil && err.Error() != user.UnknownUserError(username).Error() {
+		return fmt.Errorf("unable to lookup user %w", err)
+	}
+
+	if err != nil {
+		return fmt.Errorf("user %s does not exists", username)
+	}
+
+	for _, group := range groups {
+		_, err := user.LookupGroup(group)
+		if err != nil {
+			return fmt.Errorf("group %s does not exists", group)
+		}
+	}
+
+	usermod, err := exec.LookPath("/usr/sbin/usermod")
+
+	if err != nil {
+		return fmt.Errorf("usermod command was not found %w", err)
+	}
+
+	args := []string{"-G"}
+	args = append(args, groups...)
+	args = append(args, username)
+	cmd := exec.Command(usermod, args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("unable to modify user output:%s %w", string(out), err)
+	}
+	return nil
+}
+func deleteUser(username string) error {
+	_, err := user.Lookup(username)
+	if err != nil && err.Error() != user.UnknownUserError(username).Error() {
+		return fmt.Errorf("unable to lookup user %w", err)
+	}
+
+	if err != nil {
+		log.Printf("user %s already deleted\n", username)
+		return nil
+	}
+
+	userdel, err := exec.LookPath("/usr/sbin/userdel")
+
+	if err != nil {
+		return fmt.Errorf("useradd command was not found %w", err)
+	}
+
+	args := []string{"-r", username}
+
+	cmd := exec.Command(userdel, args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("unable to delete user output:%s %w", string(out), err)
 	}
 	return nil
 }
