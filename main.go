@@ -307,6 +307,7 @@ func deleteUser(username string) error {
 
 	if err != nil {
 		log.Printf("user %s already deleted\n", username)
+		// nolint:nilerr
 		return nil
 	}
 
