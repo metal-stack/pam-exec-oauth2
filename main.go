@@ -54,8 +54,9 @@ type config struct {
 	EndpointTokenURL string   `yaml:"endpoint-token-url"`
 	UsernameFormat   string   `yaml:"username-format"`
 	SufficientRoles  []string `yaml:"sufficient-roles"`
-	AllowedRoles     []string `yaml:"allowed-roles"`
-	CreateUser       bool     `yaml:"createuser"`
+	// AllowedRoles are OS level groups which must be present on the OS before
+	AllowedRoles []string `yaml:"allowed-roles"`
+	CreateUser   bool     `yaml:"createuser"`
 }
 
 // main primary entry
