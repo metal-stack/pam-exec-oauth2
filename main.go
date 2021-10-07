@@ -75,7 +75,7 @@ func main() {
 	debug := false
 	debugFlg := flag.Bool("debug", false, "enable debug")
 	stdout := false
-	stdoutFlg := flag.Bool("stdout", true, "log to stdout instead of syslog")
+	stdoutFlg := flag.Bool("stdout", false, "log to stdout instead of syslog")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
 		flag.PrintDefaults()
@@ -88,7 +88,7 @@ func main() {
 
 	if !stdout {
 		// initiate logging
-		sysLog, err := syslog.New(syslog.LOG_INFO, app)
+		sysLog, err := syslog.New(syslog.LOG_AUTH|syslog.LOG_WARNING, app)
 		if err != nil {
 			log.Fatal(err)
 		}
