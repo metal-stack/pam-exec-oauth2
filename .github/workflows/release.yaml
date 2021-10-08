@@ -22,9 +22,17 @@ jobs:
       uses: actions/setup-go@v2.1.4
       with:
         go-version: '1.17.x'
+
+
+    - uses: google-github-actions/setup-gcloud@master
+      with:
+        service_account_email: ${{ secrets.GCP_SA_EMAIL }}
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+
     - name: Build
       run: |
         make
+        sha256sum bin/pam-exec-oauth2 > bin/pam-exec-oauth2.sha256
 
     - name: Upload Release Asset
       uses: softprops/action-gh-release@v1
@@ -32,3 +40,22 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         files: |
           bin/pam-exec-oauth2
+
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1.0.2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.get_release.outputs.upload_url }}
+        asset_path: bin/pam-exec-oauth2.sha256
+        asset_name: pam-exec-oauth2.sha256
+        asset_content_type: application/octet-stream
+
+    - name: Prepare upload
+      run: |
+        export GITHUB_TAG_NAME=${GITHUB_REF##*/}
+        mkdir -p pam-exec-oauth2/${GITHUB_TAG_NAME}/
+        sudo chown -R $(id -u):$(id -g) bin
+        mv bin/* pam-exec-oauth2/${GITHUB_TAG_NAME}/
+    - name: Upload to GCS
+      run: gsutil -m cp -r -p pam-exec-oauth2 gs://$GCS_BUCKET
