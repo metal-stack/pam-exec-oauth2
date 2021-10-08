@@ -59,12 +59,17 @@ type config struct {
 	CreateUser   bool     `yaml:"createuser"`
 }
 
+type pamOAUTH struct {
+	config *config
+}
+
 // main primary entry
 func main() {
 	p, err := newPamOAUTH()
 	if err != nil {
 		log.Fatal(err)
 	}
+	log.Printf("version: %s", v.V)
 
 	err = p.run()
 	if err != nil {
@@ -155,10 +160,6 @@ func (p *pamOAUTH) run() error {
 	return nil
 }
 
-type pamOAUTH struct {
-	config *config
-}
-
 func newPamOAUTH() (*pamOAUTH, error) {
 	// get executable and path name
 	// to determine the default config file
@@ -193,7 +194,6 @@ func newPamOAUTH() (*pamOAUTH, error) {
 		}
 		log.SetOutput(sysLog)
 	}
-	log.Printf("version: %s", v.V)
 
 	if debugFlg != nil {
 		debug = *debugFlg
