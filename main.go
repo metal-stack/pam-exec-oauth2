@@ -61,11 +61,110 @@ type config struct {
 
 // main primary entry
 func main() {
+	p, err := newPamOAUTH()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = p.run()
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func (p *pamOAUTH) run() error {
+	// pam module use variable PAM_USER to get userid
+	username := os.Getenv("PAM_USER")
+
+	pamtype := os.Getenv("PAM_TYPE")
+	log.Printf("PAM_TYPE:%s", pamtype)
+	if pamtype == "close_session" {
+		err := deleteUser(username)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	// add user here only if user is in passwd the login worked
+	if p.config.CreateUser {
+		err := createUser(username)
+		if err != nil {
+			return err
+		}
+	}
+
+	password := ""
+	// wait for stdin to get password from user
+	s := bufio.NewScanner(os.Stdin)
+	if s.Scan() {
+		password = s.Text()
+	}
+
+	// authentication agains oidc provider
+	// load configuration from yaml config
+	oauth2Config := oauth2.Config{
+		ClientID:     p.config.ClientID,
+		ClientSecret: p.config.ClientSecret,
+		Scopes:       p.config.Scopes,
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  p.config.EndpointAuthURL,
+			TokenURL: p.config.EndpointTokenURL,
+		},
+		RedirectURL: p.config.RedirectURL,
+	}
+
+	// send authentication request to oidc provider
+	log.Printf("call OIDC Provider and get token")
+
+	oauth2Token, err := oauth2Config.PasswordCredentialsToken(
+		context.Background(),
+		fmt.Sprintf(p.config.UsernameFormat, username),
+		password,
+	)
+	if err != nil {
+		return err
+	}
+
+	// check here is token vaild
+	if !oauth2Token.Valid() {
+		return fmt.Errorf("oauth2 authentication failed")
+	}
+
+	// check group for authentication is in token
+	roles, err := validateClaims(oauth2Token.AccessToken, p.config.SufficientRoles)
+	if err != nil {
+		return fmt.Errorf("error validate Claims: %s", err)
+	}
+
+	// Filter out all not allowed roles comming from OIDC
+	groups := []string{}
+	for _, r := range roles {
+		for _, ar := range p.config.AllowedRoles {
+			if r == ar {
+				groups = append(groups, r)
+			}
+		}
+	}
+	err = modifyUser(username, groups)
+	if err != nil {
+		return fmt.Errorf("unable to add groups: %s", err)
+	}
+
+	log.Print("oauth2 authentication succeeded")
+	return nil
+}
+
+type pamOAUTH struct {
+	config *config
+}
+
+func newPamOAUTH() (*pamOAUTH, error) {
 	// get executable and path name
 	// to determine the default config file
 	ex, err := os.Executable()
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 	exPath := filepath.Dir(ex)
 
@@ -90,7 +189,7 @@ func main() {
 		// initiate logging
 		sysLog, err := syslog.New(syslog.LOG_AUTH|syslog.LOG_WARNING, app)
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
 		}
 		log.SetOutput(sysLog)
 	}
@@ -107,93 +206,14 @@ func main() {
 
 	config, err := readConfig(configFile)
 	if err != nil {
-		log.Fatalf(err.Error())
+		return nil, err
 	}
 	if debug {
 		log.Printf("config:%#v\n", config)
 	}
-
-	// pam module use variable PAM_USER to get userid
-	username := os.Getenv("PAM_USER")
-
-	pamtype := os.Getenv("PAM_TYPE")
-	log.Printf("PAM_TYPE:%s", pamtype)
-	if pamtype == "close_session" {
-		err = deleteUser(username)
-		if err != nil {
-			log.Fatalf(err.Error())
-		}
-		return
-	}
-
-	// add user here only if user is in passwd the login worked
-	if config.CreateUser {
-		err := createUser(username)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-	}
-
-	password := ""
-	// wait for stdin to get password from user
-	s := bufio.NewScanner(os.Stdin)
-	if s.Scan() {
-		password = s.Text()
-	}
-
-	// authentication agains oidc provider
-	// load configuration from yaml config
-	oauth2Config := oauth2.Config{
-		ClientID:     config.ClientID,
-		ClientSecret: config.ClientSecret,
-		Scopes:       config.Scopes,
-		Endpoint: oauth2.Endpoint{
-			AuthURL:  config.EndpointAuthURL,
-			TokenURL: config.EndpointTokenURL,
-		},
-		RedirectURL: config.RedirectURL,
-	}
-
-	// send authentication request to oidc provider
-	log.Printf("call OIDC Provider and get token")
-
-	oauth2Token, err := oauth2Config.PasswordCredentialsToken(
-		context.Background(),
-		fmt.Sprintf(config.UsernameFormat, username),
-		password,
-	)
-
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-
-	// check here is token vaild
-	if !oauth2Token.Valid() {
-		log.Fatal("oauth2 authentication failed")
-	}
-
-	// check group for authentication is in token
-	roles, err := validateClaims(oauth2Token.AccessToken, config.SufficientRoles)
-	if err != nil {
-		log.Fatalf("error validate Claims: %s", err)
-	}
-
-	// Filter out all not allowed roles comming from OIDC
-	groups := []string{}
-	for _, r := range roles {
-		for _, ar := range config.AllowedRoles {
-			if r == ar {
-				groups = append(groups, r)
-			}
-		}
-	}
-	err = modifyUser(username, groups)
-	if err != nil {
-		log.Fatalf("unable to add groups: %s", err)
-	}
-
-	log.Print("oauth2 authentication succeeded")
-	os.Exit(0)
+	return &pamOAUTH{
+		config: config,
+	}, nil
 }
 
 // readConfig
