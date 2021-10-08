@@ -139,7 +139,7 @@ func (p *pamOAUTH) run() error {
 	// check group for authentication is in token
 	roles, err := validateClaims(oauth2Token.AccessToken, p.config.SufficientRoles)
 	if err != nil {
-		return fmt.Errorf("error validate Claims: %s", err)
+		return fmt.Errorf("error validate Claims: %w", err)
 	}
 
 	// Filter out all not allowed roles comming from OIDC
@@ -153,7 +153,7 @@ func (p *pamOAUTH) run() error {
 	}
 	err = modifyUser(username, groups)
 	if err != nil {
-		return fmt.Errorf("unable to add groups: %s", err)
+		return fmt.Errorf("unable to add groups: %w", err)
 	}
 
 	log.Print("oauth2 authentication succeeded")
