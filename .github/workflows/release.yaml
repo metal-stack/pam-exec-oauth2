@@ -34,6 +34,12 @@ jobs:
         make
         sha256sum bin/pam-exec-oauth2 > bin/pam-exec-oauth2.sha256
 
+    - name: Get release
+      id: get_release
+      uses: bruceadams/get-release@v1.2.2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
     - name: Upload Release Asset
       uses: softprops/action-gh-release@v1
       with:
