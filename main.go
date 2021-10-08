@@ -34,6 +34,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/metal-stack/v"
 	"golang.org/x/oauth2"
 	"gopkg.in/square/go-jose.v2/jwt"
 	"gopkg.in/yaml.v2"
@@ -60,7 +61,6 @@ type config struct {
 
 // main primary entry
 func main() {
-
 	// get executable and path name
 	// to determine the default config file
 	ex, err := os.Executable()
@@ -94,6 +94,7 @@ func main() {
 		}
 		log.SetOutput(sysLog)
 	}
+	log.Printf("version: %s", v.V)
 
 	if debugFlg != nil {
 		debug = *debugFlg
@@ -116,6 +117,7 @@ func main() {
 	username := os.Getenv("PAM_USER")
 
 	pamtype := os.Getenv("PAM_TYPE")
+	log.Printf("PAM_TYPE:%s", pamtype)
 	if pamtype == "close_session" {
 		err = deleteUser(username)
 		if err != nil {
