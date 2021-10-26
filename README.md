@@ -3,7 +3,7 @@
 ## Install
 
 ```bash
-go get github.com/shimt/pam-exec-oauth2
+go get github.com/metal-stack/pam-exec-oauth2
 
 PREFIX=/opt/pam-exec-oauth2
 
