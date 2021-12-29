@@ -151,9 +151,11 @@ func (p *pamOAUTH) run() error {
 			}
 		}
 	}
-	err = modifyUser(username, groups)
-	if err != nil {
-		return fmt.Errorf("unable to add groups: %w", err)
+	if p.config.CreateUser {
+		err = modifyUser(username, groups)
+		if err != nil {
+			return fmt.Errorf("unable to add groups: %w", err)
+		}
 	}
 
 	log.Print("oauth2 authentication succeeded")
