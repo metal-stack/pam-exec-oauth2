@@ -248,15 +248,18 @@ func validateClaims(t string, sufficientRoles []string) ([]string, error) {
 	if err := token.UnsafeClaimsWithoutVerification(&claims); err != nil {
 		return nil, fmt.Errorf("unable to extract claims from token: %w", err)
 	}
-	for _, role := range claims.Roles {
-		for _, sr := range sufficientRoles {
-			if role == sr {
-				log.Print("validateClaims access granted role " + role + " is in token")
-				return claims.Roles, nil
+	if len(sufficientRoles) > 0 {
+		for _, role := range claims.Roles {
+			for _, sr := range sufficientRoles {
+				if role == sr {
+					log.Print("validateClaims access granted role " + role + " is in token")
+					return claims.Roles, nil
+				}
 			}
 		}
+		return nil, fmt.Errorf("role: %s not found", sufficientRoles)
 	}
-	return nil, fmt.Errorf("role: %s not found", sufficientRoles)
+	return claims.Roles, nil
 }
 
 // createUser if it does not already exists
