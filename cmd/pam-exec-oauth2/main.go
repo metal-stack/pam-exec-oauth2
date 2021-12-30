@@ -31,36 +31,20 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
-	"path"
-	"path/filepath"
 
 	"github.com/metal-stack/v"
+
+	"github.com/metal-stack/oauth2-login/internal/conf"
+
 	"golang.org/x/oauth2"
 	"gopkg.in/square/go-jose.v2/jwt"
-	"gopkg.in/yaml.v2"
 )
 
 // app name
-const app = "pam-exec-oauth2"
-
-// config define openid Connect parameters
-// and setting for this module
-type config struct {
-	ClientID         string   `yaml:"client-id"`
-	ClientSecret     string   `yaml:"client-secret"`
-	RedirectURL      string   `yaml:"redirect-url"`
-	Scopes           []string `yaml:"scopes"`
-	EndpointAuthURL  string   `yaml:"endpoint-auth-url"`
-	EndpointTokenURL string   `yaml:"endpoint-token-url"`
-	UsernameFormat   string   `yaml:"username-format"`
-	SufficientRoles  []string `yaml:"sufficient-roles"`
-	// AllowedRoles are OS level groups which must be present on the OS before
-	AllowedRoles []string `yaml:"allowed-roles"`
-	CreateUser   bool     `yaml:"createuser"`
-}
+const app = "pam-oauth2"
 
 type pamOAUTH struct {
-	config *config
+	config *conf.Config
 }
 
 // main primary entry
@@ -80,24 +64,6 @@ func main() {
 func (p *pamOAUTH) run() error {
 	// pam module use variable PAM_USER to get userid
 	username := os.Getenv("PAM_USER")
-
-	pamtype := os.Getenv("PAM_TYPE")
-	log.Printf("PAM_TYPE:%s", pamtype)
-	if pamtype == "close_session" {
-		err := deleteUser(username)
-		if err != nil {
-			return err
-		}
-		return nil
-	}
-
-	// add user here only if user is in passwd the login worked
-	if p.config.CreateUser {
-		err := createUser(username)
-		if err != nil {
-			return err
-		}
-	}
 
 	password := ""
 	// wait for stdin to get password from user
@@ -163,17 +129,7 @@ func (p *pamOAUTH) run() error {
 }
 
 func newPamOAUTH() (*pamOAUTH, error) {
-	// get executable and path name
-	// to determine the default config file
-	ex, err := os.Executable()
-	if err != nil {
-		return nil, err
-	}
-	exPath := filepath.Dir(ex)
-
 	// initiate application parameters
-	configFile := path.Join(exPath, app+".yaml")
-	configFlg := flag.String("config", configFile, "config file to use")
 	debug := false
 	debugFlg := flag.Bool("debug", false, "enable debug")
 	stdout := false
@@ -201,12 +157,7 @@ func newPamOAUTH() (*pamOAUTH, error) {
 		debug = *debugFlg
 	}
 
-	if configFlg != nil {
-		log.Printf("using config file:%s", *configFlg)
-		configFile = *configFlg
-	}
-
-	config, err := readConfig(configFile)
+	config, err := conf.ReadConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -216,21 +167,6 @@ func newPamOAUTH() (*pamOAUTH, error) {
 	return &pamOAUTH{
 		config: config,
 	}, nil
-}
-
-// readConfig
-// need file path from yaml and return config
-func readConfig(filename string) (*config, error) {
-	yamlFile, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-	var c config
-	err = yaml.Unmarshal(yamlFile, &c)
-	if err != nil {
-		return nil, fmt.Errorf("unable to unmarshal filecontent to config struct:%w", err)
-	}
-	return &c, nil
 }
 
 // myClaim define token struct
@@ -264,96 +200,28 @@ func validateClaims(t string, sufficientRoles []string) ([]string, error) {
 	return claims.Roles, nil
 }
 
-// createUser if it does not already exists
-func createUser(username string) error {
-	_, err := user.Lookup(username)
-	if err != nil && err.Error() != user.UnknownUserError(username).Error() {
-		return fmt.Errorf("unable to lookup user %w", err)
-	}
-
-	if err == nil {
-		log.Printf("user %s already exists\n", username)
-		return nil
-	}
-
-	useradd, err := exec.LookPath("/usr/sbin/useradd")
-
-	if err != nil {
-		return fmt.Errorf("useradd command was not found %w", err)
-	}
-
-	args := []string{"-m", "-s", "/bin/bash", "-c", app, username}
-	cmd := exec.Command(useradd, args...)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("unable to create user output:%s %w", string(out), err)
-	}
-	return nil
-}
-
-// modifyUser add groups to the user
+// modifyUser add missing groups to the user
 func modifyUser(username string, groups []string) error {
 	_, err := user.Lookup(username)
 	if err != nil && err.Error() != user.UnknownUserError(username).Error() {
 		return fmt.Errorf("unable to lookup user %w", err)
 	}
 
-	if err != nil {
-		return fmt.Errorf("user %s does not exists", username)
-	}
+	if len(groups) > 0 {
+		usermod, err := exec.LookPath("/usr/sbin/usermod")
 
-	for _, group := range groups {
-		_, err := user.LookupGroup(group)
 		if err != nil {
-			return fmt.Errorf("group %s does not exists", group)
+			return fmt.Errorf("usermod command was not found %w", err)
 		}
-	}
 
-	usermod, err := exec.LookPath("/usr/sbin/usermod")
-
-	if err != nil {
-		return fmt.Errorf("usermod command was not found %w", err)
-	}
-
-	args := []string{"-G"}
-	args = append(args, groups...)
-	args = append(args, username)
-	cmd := exec.Command(usermod, args...)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("unable to modify user output:%s %w", string(out), err)
-	}
-	return nil
-}
-func deleteUser(username string) error {
-	u, err := user.Lookup(username)
-	if err != nil && err.Error() != user.UnknownUserError(username).Error() {
-		return fmt.Errorf("unable to lookup user %w", err)
-	}
-
-	if err != nil {
-		log.Printf("user %s already deleted\n", username)
-		// nolint:nilerr
-		return nil
-	}
-
-	if u.Name != app {
-		log.Printf("user %s was not created by %s\n", username, app)
-		return nil
-	}
-
-	userdel, err := exec.LookPath("/usr/sbin/userdel")
-
-	if err != nil {
-		return fmt.Errorf("useradd command was not found %w", err)
-	}
-
-	args := []string{"-r", username}
-
-	cmd := exec.Command(userdel, args...)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("unable to delete user output:%s %w", string(out), err)
+		args := []string{"-G"}
+		args = append(args, groups...)
+		args = append(args, username)
+		cmd := exec.Command(usermod, args...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("unable to modify user output:%s %w", string(out), err)
+		}
 	}
 	return nil
 }
