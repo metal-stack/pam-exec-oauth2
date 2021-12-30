@@ -24,7 +24,7 @@ pam:
 				-X 'github.com/metal-stack/v.Revision=$(GITVERSION)' \
 				-X 'github.com/metal-stack/v.GitSHA1=$(SHA)' \
 				-X 'github.com/metal-stacj/v.BuildDate=$(BUILDDATE)'" \
-	-o bin/pam-exec-auth2 ./cmd/pam-exec-oauth2
+	-o bin/pam-exec-oauth2 ./cmd/pam-exec-oauth2
 	strip bin/pam-exec-oauth2
 
 .PHONY: nss
@@ -39,5 +39,5 @@ clean:
 
 install: all
 	${INSTALL_DATA} bin/libnss_oauth2.so.2 ${prefix}/lib/libnss_oauth2.so.2
-	${INSTALL_PROGRAM} bin/pam-exec-auth2 ${prefix}/sbin/pam-exec-auth2
+	${INSTALL_PROGRAM} bin/pam-exec-oauth2 ${prefix}/sbin/pam-exec-oauth2
 	${INSTALL_DATA} sample.yaml ${prefix}/etc/oauth2-login.conf
