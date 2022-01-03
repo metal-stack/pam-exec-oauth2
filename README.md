@@ -1,4 +1,4 @@
-# pam-exec-oauth2
+# oauth2-login
 
 ## Install
 
@@ -15,8 +15,8 @@ sudo make install
 add the following lines to `/etc/pam.d/common-auth`
 
 ```
-#### authenticate on login #####
-auth sufficient pam_exec.so expose_authtok /sbin/pam-exec-oauth2
+#### authenticate with oauth2 flow #####
+auth sufficient pam_oauth2.so
 ```
 
 ### NSS
@@ -29,7 +29,7 @@ add `oauth2` to the `passwd:` line in `/etc/nsswitch.conf` like this:
 passwd:         files systemd oauth2
 ```
 
-### pam-exec-oauth2.yaml
+### oauth2-login.config
 
 Configuration must be stored in `/etc/oauth2-login.config`. There is no option to change the location
 of this config file. Examples:

@@ -15,22 +15,24 @@ all: pam nss
 
 .PHONY: pam
 pam:
-	CGO_ENABLED=0 \
-	go build \
-		-trimpath \
-		-tags netgo \
-		-ldflags "-w -extldflags '-static' \
-				-X 'github.com/metal-stack/v.Version=$(VERSION)' \
-				-X 'github.com/metal-stack/v.Revision=$(GITVERSION)' \
-				-X 'github.com/metal-stack/v.GitSHA1=$(SHA)' \
-				-X 'github.com/metal-stacj/v.BuildDate=$(BUILDDATE)'" \
-	-o bin/pam-exec-oauth2 ./cmd/pam-exec-oauth2
-	strip bin/pam-exec-oauth2
+	CGO_CFLAGS='-g -O2'  \
+	go build -ldflags "-w \
+			-X 'github.com/metal-stack/v.Version=$(VERSION)' \
+			-X 'github.com/metal-stack/v.Revision=$(GITVERSION)' \
+			-X 'github.com/metal-stack/v.GitSHA1=$(SHA)' \
+			-X 'github.com/metal-stacj/v.BuildDate=$(BUILDDATE)'" \
+                 --buildmode=c-shared -o bin/pam_oauth2.so ./cmd/pam-oauth2
+	strip bin/pam_oauth2.so
 
 .PHONY: nss
 nss:
 	CGO_CFLAGS='-g -O2 -D __LIB_NSS_NAME=oauth2'  \
-	go build --buildmode=c-shared -o bin/libnss_oauth2.so.2 ./cmd/nss-oauth2
+	go build -ldflags "-w \
+			-X 'github.com/metal-stack/v.Version=$(VERSION)' \
+			-X 'github.com/metal-stack/v.Revision=$(GITVERSION)' \
+			-X 'github.com/metal-stack/v.GitSHA1=$(SHA)' \
+			-X 'github.com/metal-stacj/v.BuildDate=$(BUILDDATE)'" \
+	         --buildmode=c-shared -o bin/libnss_oauth2.so.2 ./cmd/nss-oauth2
 	strip bin/libnss_oauth2.so.2
 
 .PHONY: clean
@@ -39,5 +41,5 @@ clean:
 
 install: all
 	${INSTALL_DATA} bin/libnss_oauth2.so.2 ${prefix}/lib/libnss_oauth2.so.2
-	${INSTALL_PROGRAM} bin/pam-exec-oauth2 ${prefix}/sbin/pam-exec-oauth2
+	${INSTALL_PROGRAM} bin/pam_oauth2.so ${prefix}/usr/lib/x86_64-linux-gnu/security/pam_oauth2.so
 	${INSTALL_DATA} sample.yaml ${prefix}/etc/oauth2-login.conf

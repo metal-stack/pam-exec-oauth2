@@ -20,20 +20,18 @@
 
 package main
 
+// #include <security/pam_appl.h>
+import "C"
 import (
-	"bufio"
 	"context"
 	"regexp"
+	"runtime"
+	"strings"
 
-	"flag"
 	"fmt"
-	"log"
 	"log/syslog"
-	"os"
 	"os/exec"
 	"os/user"
-
-	"github.com/metal-stack/v"
 
 	"github.com/metal-stack/oauth2-login/internal/conf"
 
@@ -42,139 +40,99 @@ import (
 )
 
 // app name
-const app = "pam-oauth2"
+const app = "pam_oauth2"
 
-type pamOAUTH struct {
-	config *conf.Config
+func pamLog(format string, args ...interface{}) {
+	l, err := syslog.New(syslog.LOG_AUTH|syslog.LOG_WARNING, app)
+	if err != nil {
+		return
+	}
+	l.Warning(fmt.Sprintf(format, args...))
 }
 
-// main primary entry
-func main() {
-	p, err := newPamOAUTH()
+func pamAuthenticate(pamh *C.pam_handle_t, uid int, username string, argv []string) int {
+	runtime.GOMAXPROCS(1)
+
+	config, err := conf.ReadConfig()
 	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("version: %s", v.V)
-
-	err = p.run()
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
-func (p *pamOAUTH) run() error {
-	// pam module use variable PAM_USER to get userid
-	username := os.Getenv("PAM_USER")
-
-	password := ""
-	// wait for stdin to get password from user
-	s := bufio.NewScanner(os.Stdin)
-	if s.Scan() {
-		password = s.Text()
+		pamLog("Error reading config: %v", err)
+		return PAM_OPEN_ERR
 	}
 
-	if len(p.config.NameRegex) > 0 {
+	if len(config.NameRegex) > 0 {
 		// Accept only for usernames that match the Regex
-		if match, _ := regexp.MatchString(p.config.NameRegex, username); match == false {
-			return fmt.Errorf("username %s did not match 'name-regex'", username)
+		if match, _ := regexp.MatchString(config.NameRegex, username); match == false {
+			pamLog("username %s did not match 'name-regex'", username)
+			return PAM_USER_UNKNOWN
 		}
 	}
+
+	password := strings.TrimSpace(requestPass(pamh, C.PAM_PROMPT_ECHO_OFF, "oauth2-Password: "))
 
 	// authentication agains oidc provider
 	// load configuration from yaml config
 	oauth2Config := oauth2.Config{
-		ClientID:     p.config.ClientID,
-		ClientSecret: p.config.ClientSecret,
-		Scopes:       p.config.Scopes,
+		ClientID:     config.ClientID,
+		ClientSecret: config.ClientSecret,
+		Scopes:       config.Scopes,
 		Endpoint: oauth2.Endpoint{
-			AuthURL:  p.config.EndpointAuthURL,
-			TokenURL: p.config.EndpointTokenURL,
+			AuthURL:  config.EndpointAuthURL,
+			TokenURL: config.EndpointTokenURL,
 		},
-		RedirectURL: p.config.RedirectURL,
+		RedirectURL: config.RedirectURL,
 	}
 
 	// send authentication request to oidc provider
-	log.Printf("call OIDC Provider and get token")
+	pamLog("call OIDC provider and get token")
 
 	oauth2Token, err := oauth2Config.PasswordCredentialsToken(
 		context.Background(),
-		fmt.Sprintf(p.config.UsernameFormat, username),
+		fmt.Sprintf(config.UsernameFormat, username),
 		password,
 	)
 	if err != nil {
-		return err
+		pamLog("oauth2 authentication failed: %v", err)
+		return PAM_AUTH_ERR
 	}
 
 	// check here is token vaild
 	if !oauth2Token.Valid() {
-		return fmt.Errorf("oauth2 authentication failed")
+		pamLog("oauth2 authentication failed")
+		return PAM_AUTH_ERR
 	}
 
 	// check group for authentication is in token
-	roles, err := validateClaims(oauth2Token.AccessToken, p.config.SufficientRoles)
+	roles, err := validateClaims(oauth2Token.AccessToken, config.SufficientRoles)
 	if err != nil {
-		return fmt.Errorf("error validate Claims: %w", err)
+		pamLog("error validate claims: %v", err)
+		return PAM_AUTH_ERR
 	}
 
 	// Filter out all not allowed roles comming from OIDC
 	groups := []string{}
 	for _, r := range roles {
-		for _, ar := range p.config.AllowedRoles {
+		for _, ar := range config.AllowedRoles {
 			if r == ar {
 				groups = append(groups, r)
 			}
 		}
 	}
-	if p.config.CreateUser {
+	if config.CreateUser {
 		err = modifyUser(username, groups)
 		if err != nil {
-			return fmt.Errorf("unable to add groups: %w", err)
+			pamLog("unable to add groups: %v", err)
+			return PAM_AUTH_ERR
 		}
 	}
 
-	log.Print("oauth2 authentication succeeded")
-	return nil
+	pamLog("oauth2 authentication succeeded")
+	return PAM_SUCCESS
 }
 
-func newPamOAUTH() (*pamOAUTH, error) {
-	// initiate application parameters
-	debug := false
-	debugFlg := flag.Bool("debug", false, "enable debug")
-	stdout := false
-	stdoutFlg := flag.Bool("stdout", false, "log to stdout instead of syslog")
-	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
-		flag.PrintDefaults()
-	}
-	flag.Parse()
+// main is for testing purposes only, the PAM module has to be built with:
+// go build -buildmode=c-shared
+func main() {
 
-	if stdoutFlg != nil {
-		stdout = *stdoutFlg
-	}
-
-	if !stdout {
-		// initiate logging
-		sysLog, err := syslog.New(syslog.LOG_AUTH|syslog.LOG_WARNING, app)
-		if err != nil {
-			return nil, err
-		}
-		log.SetOutput(sysLog)
-	}
-
-	if debugFlg != nil {
-		debug = *debugFlg
-	}
-
-	config, err := conf.ReadConfig()
-	if err != nil {
-		return nil, err
-	}
-	if debug {
-		log.Printf("config:%#v\n", config)
-	}
-	return &pamOAUTH{
-		config: config,
-	}, nil
 }
 
 // myClaim define token struct
@@ -198,7 +156,7 @@ func validateClaims(t string, sufficientRoles []string) ([]string, error) {
 		for _, role := range claims.Roles {
 			for _, sr := range sufficientRoles {
 				if role == sr {
-					log.Print("validateClaims access granted role " + role + " is in token")
+					pamLog("validateClaims access granted role " + role + " is in token")
 					return claims.Roles, nil
 				}
 			}
