@@ -1,17 +1,11 @@
-# pam-exec-oauth2
+# oauth2-login
 
 ## Install
 
 ```bash
-go get github.com/metal-stack/pam-exec-oauth2
+make
 
-PREFIX=/opt/pam-exec-oauth2
-
-sudo mkdir $PREFIX
-sudo cp go/bin/pam-exec-oauth2 $PREFIX/pam-exec-oauth2
-sudo touch $PREFIX/pam-exec-oauth2.yaml
-sudo chmod 755 $PREFIX/pam-exec-oauth2
-sudo chmod 600 $PREFIX/pam-exec-oauth2.yaml
+sudo make install
 ```
 
 ## Configuration
@@ -20,21 +14,25 @@ sudo chmod 600 $PREFIX/pam-exec-oauth2.yaml
 
 add the following lines to `/etc/pam.d/common-auth`
 
-```bash
-#### create user and authenticate on login #####
-auth sufficient pam_exec.so expose_authtok /opt/pam-exec-oauth2/pam-exec-oauth2
+```
+#### authenticate with oauth2 flow #####
+auth sufficient pam_oauth2.so
 ```
 
-add the following lines to `/etc/pam.d/common-session`
+### NSS
 
-```bash
-#### remove user on logout #####
-session     optional    pam_exec.so quiet /opt/pam-exec-oauth2/pam-exec-oauth2
+add `oauth2` to the `passwd:` line in `/etc/nsswitch.conf` like this:
+
+```
+# /etc/nsswitch.conf
+
+passwd:         files systemd oauth2
 ```
 
-### pam-exec-oauth2.yaml
+### oauth2-login.config
 
-edit `/opt/pam-exec-oauth2/pam-exec-oauth2.yaml`
+Configuration must be stored in `/etc/oauth2-login.config`. There is no option to change the location
+of this config file. Examples:
 
 #### Azure AD
 
@@ -53,6 +51,7 @@ sufficient-roles:
     - "serverAccess"
 allowed-roles: 
     - "wheel"
+name-regex: "test.*"
 ```
 
 #### Keycloak
@@ -72,4 +71,13 @@ sufficient-roles:
     - "serverAccess"
 allowed-roles: 
     - "wheel"
+name-regex: "test.*"
 ```
+
+#### Config options
+
+- `createuser`: Enable user account autocreation.
+- `name-regex`: Only logins that match the regex are allowed/created.
+- `sufficient-roles`: User must have these roles assigned to login.
+- `allowed-roles`: If a user has these roles, they will be assigned to his Unix user as groups.
+  All other roles will be ignored.

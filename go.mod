@@ -1,13 +1,11 @@
-module github.com/metal-stack/pam-exec-oauth2
+module github.com/metal-stack/oauth2-login
 
 go 1.16
 
 require (
-	github.com/golang/protobuf v1.5.2 // indirect
-	github.com/metal-stack/v v1.0.3
-	golang.org/x/net v0.0.0-20211006190231-62292e806868 // indirect
-	golang.org/x/oauth2 v0.0.0-20211005180243-6b3c2da341f1
-	google.golang.org/appengine v1.6.7 // indirect
+	github.com/protosam/go-libnss v0.0.0-20200612182328-7d15cc62567d
+	github.com/shirou/gopsutil/v3 v3.21.11
+	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
 	gopkg.in/square/go-jose.v2 v2.6.0
 	gopkg.in/yaml.v2 v2.4.0
 )

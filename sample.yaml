@@ -12,3 +12,4 @@ sufficient-roles:
 allowed-roles: 
     - "cumulus"
 createuser: true
+name-regex: "test.*"
