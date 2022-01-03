@@ -23,6 +23,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"regexp"
 
 	"flag"
 	"fmt"
@@ -70,6 +71,13 @@ func (p *pamOAUTH) run() error {
 	s := bufio.NewScanner(os.Stdin)
 	if s.Scan() {
 		password = s.Text()
+	}
+
+	if len(p.config.NameRegex) > 0 {
+		// Accept only for usernames that match the Regex
+		if match, _ := regexp.MatchString(p.config.NameRegex, username); match == false {
+			return fmt.Errorf("username %s did not match 'name-regex'", username)
+		}
 	}
 
 	// authentication agains oidc provider
